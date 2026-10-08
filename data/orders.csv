@@ -1,0 +1,11 @@
+order_date,product,category,quantity,amount,status
+2026-01-05,Keyboard,Electronics,1,120,completed
+2026-01-12,Notebook,Stationery,2,40,completed
+2026-01-21,Mouse,Electronics,1,60,returned
+2026-02-03,Keyboard,Electronics,2,240,completed
+2026-02-10,Bottle,Lifestyle,1,35,completed
+2026-02-15,Notebook,Stationery,3,60,completed
+2026-03-02,Mouse,Electronics,2,120,completed
+2026-03-08,Bottle,Lifestyle,2,70,completed
+2026-03-12,Notebook,Stationery,1,20,cancelled
+2026-03-18,Keyboard,Electronics,1,120,completed
