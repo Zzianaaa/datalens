@@ -3,14 +3,15 @@ import threading
 import time
 from pathlib import Path
 from typing import Literal
-from fastapi import FastAPI, UploadFile, HTTPException
+from fastapi import FastAPI, UploadFile, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .core import parse_csv, demo_sql, run_query, MAX_BYTES
 from .model import generate_sql, model_config
 from .profile import profile_dataset
+from .browse import browse_dataset
 
-app = FastAPI(title='DataLens API', version='0.3.0')
+app = FastAPI(title='DataLens API', version='0.4.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -65,6 +66,14 @@ def config():
 @app.get('/api/datasets/{key}')
 def dataset(key: str):
     return describe(key, get_dataset(key))
+
+@app.get('/api/datasets/{key}/rows')
+def rows(key: str, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+         search: str = Query('', max_length=200), sort_by: int | None = Query(None, ge=0), descending: bool = False):
+    try:
+        return browse_dataset(get_dataset(key), page, page_size, search, sort_by, descending)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc))
 
 @app.get('/api/datasets/{key}/profile')
 def profile(key: str):
