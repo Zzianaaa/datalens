@@ -6,3 +6,8 @@ node_modules/
 frontend/dist/
 *.pyc
 .DS_Store
+
+storage/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
