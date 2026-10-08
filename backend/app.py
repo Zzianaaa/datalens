@@ -8,8 +8,9 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from .core import parse_csv, demo_sql, run_query, MAX_BYTES
 from .model import generate_sql, model_config
+from .profile import profile_dataset
 
-app = FastAPI(title='DataLens API', version='0.2.0')
+app = FastAPI(title='DataLens API', version='0.3.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -64,6 +65,10 @@ def config():
 @app.get('/api/datasets/{key}')
 def dataset(key: str):
     return describe(key, get_dataset(key))
+
+@app.get('/api/datasets/{key}/profile')
+def profile(key: str):
+    return profile_dataset(get_dataset(key))
 
 @app.delete('/api/datasets/{key}')
 def remove_dataset(key: str):
