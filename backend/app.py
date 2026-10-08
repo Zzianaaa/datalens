@@ -11,8 +11,9 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
+from . import library
 
-app = FastAPI(title='DataLens API', version='0.5.0')
+app = FastAPI(title='DataLens API', version='0.6.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -48,14 +49,14 @@ def get_dataset(key):
 def store(raw):
     return store_dataset(parse_csv(raw))
 
-def store_dataset(ds):
-    key = secrets.token_urlsafe(24)
+def store_dataset(ds, key=None):
+    key = key or secrets.token_urlsafe(24)
     with LOCK:
         now = time.time()
         for k in list(DATA):
             if now - DATA[k][0] > TTL:
                 del DATA[k]
-        if len(DATA) >= 10:
+        if len(DATA) >= 10 and key not in DATA:
             raise ValueError('已达到 10 份数据上限，请移除不用的数据或等待过期')
         DATA[key] = (now, ds)
     return describe(key, ds)
@@ -87,6 +88,72 @@ def dashboard(key: str, body: DashboardRequest):
         return business_dashboard(get_dataset(key), **body.model_dump())
     except ValueError as exc:
         raise HTTPException(400,str(exc))
+
+class ProjectRequest(BaseModel):
+    name: str = Field(min_length=1,max_length=100,pattern=r'\S')
+    description: str = Field(default='',max_length=1000)
+
+class SaveRequest(BaseModel):
+    name: str = Field(min_length=1,max_length=100,pattern=r'\S')
+    project_id: str | None = None
+
+class ArchiveRequest(BaseModel):
+    archived: bool
+
+@app.get('/api/library')
+def list_library():
+    return library.listing()
+
+@app.post('/api/library/projects')
+def add_project(body: ProjectRequest):
+    try:
+        return library.create_project(body.name.strip(),body.description)
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+@app.post('/api/library/datasets/{key}')
+def save_to_library(key: str,body: SaveRequest):
+    try:
+        return library.save_dataset(body.name.strip(),body.project_id,get_dataset(key))
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+@app.post('/api/library/assets/{key}/open')
+def open_saved(key: str):
+    try:
+        return store_dataset(library.get_asset(key),key='saved-'+key)
+    except KeyError:
+        raise HTTPException(404,'保存的数据不存在')
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+@app.patch('/api/library/assets/{key}')
+def archive_saved(key: str,body: ArchiveRequest):
+    try:
+        library.archive(key,body.archived)
+        return {'archived':body.archived}
+    except KeyError:
+        raise HTTPException(404,'保存的数据不存在')
+
+class ReportRequest(BaseModel):
+    title: str = Field(min_length=1,max_length=100,pattern=r'\S')
+    project_id: str | None = None
+    question: str = Field(max_length=10000)
+    result: dict
+
+@app.post('/api/library/reports')
+def add_report(body: ReportRequest):
+    try:
+        return library.save_report(body.title.strip(),body.project_id,body.question,body.result)
+    except (ValueError,TypeError) as exc:
+        raise HTTPException(400,str(exc))
+
+@app.get('/api/library/reports/{key}')
+def read_report(key: str):
+    try:
+        return library.get_report(key)
+    except KeyError:
+        raise HTTPException(404,'报告不存在')
 
 @app.get('/api/config')
 def config():
