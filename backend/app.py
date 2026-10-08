@@ -5,15 +5,15 @@ from pathlib import Path
 from typing import Literal
 from fastapi import FastAPI, UploadFile, HTTPException, Query
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from .core import parse_csv, demo_sql, run_query, MAX_BYTES
 from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library
+from . import library, tasks
 
-app = FastAPI(title='DataLens API', version='0.6.0')
+app = FastAPI(title='DataLens API', version='0.7.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -154,6 +154,53 @@ def read_report(key: str):
         return library.get_report(key)
     except KeyError:
         raise HTTPException(404,'报告不存在')
+
+class TaskRequest(BaseModel):
+    project_id: str | None = None
+    title: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    owner: str = Field(default='',max_length=80)
+    due: str = ''
+    status: Literal['待处理','进行中','已完成','已归档'] = '待处理'
+    notes: str = Field(default='',max_length=2000)
+
+    @field_validator('due')
+    @classmethod
+    def valid_due(cls,value):
+        if value:
+            from datetime import date
+            if date.fromisoformat(value).isoformat()!=value:raise ValueError('日期无效')
+        return value
+
+class GoalRequest(TaskRequest):
+    unit: str = Field(default='元',max_length=20)
+    target: float = Field(gt=0,allow_inf_nan=False)
+    current: float = Field(ge=0,allow_inf_nan=False)
+
+@app.get('/api/work')
+def list_work():
+    return tasks.listing()
+
+@app.post('/api/work/tasks')
+def create_task(body: TaskRequest):
+    try:return tasks.save_task(body.model_dump())
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.put('/api/work/tasks/{key}')
+def update_task(key: str,body: TaskRequest):
+    try:return tasks.save_task(body.model_dump(),key)
+    except KeyError:raise HTTPException(404,'任务不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/work/goals')
+def create_goal_record(body: GoalRequest):
+    try:return tasks.save_goal(body.model_dump())
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.put('/api/work/goals/{key}')
+def update_goal_record(key: str,body: GoalRequest):
+    try:return tasks.save_goal(body.model_dump(),key)
+    except KeyError:raise HTTPException(404,'目标不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
 def config():
