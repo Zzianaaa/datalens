@@ -35,3 +35,48 @@ def test_timeout():
 def test_preserve_top_five_limit():
     ds=parse_csv(("a\n"+"1\n"*20).encode())
     assert len(run_query(ds,"SELECT * FROM data LIMIT 5")["rows"])==5
+
+@pytest.fixture(autouse=True)
+def clear_datasets():
+    from backend.app import DATA
+    DATA.clear()
+    yield
+    DATA.clear()
+
+def test_dataset_lifecycle():
+    d=client.post('/api/demo').json()
+    assert client.get('/api/datasets/'+d['id']).json()['row_count']==10
+    assert client.delete('/api/datasets/'+d['id']).json()['deleted']
+    assert client.get('/api/datasets/'+d['id']).status_code==404
+
+def test_capacity_and_expiry():
+    from backend.app import DATA
+    for _ in range(10): assert client.post('/api/demo').status_code==200
+    assert client.post('/api/demo').status_code==400
+    for k,(t,ds) in list(DATA.items()): DATA[k]=(t-4000,ds)
+    assert client.post('/api/demo').status_code==200
+
+def test_manual_sql():
+    d=client.post('/api/demo').json()
+    r=client.post('/api/query',json={'dataset_id':d['id'],'sql':'SELECT COUNT(*) AS count FROM data'})
+    assert r.json()['rows']==[[10]]
+    assert client.post('/api/query',json={'dataset_id':d['id'],'sql':'DELETE FROM data'}).status_code==400
+
+def test_ai_integration(monkeypatch):
+    import importlib
+    module=importlib.import_module('backend.app')
+    monkeypatch.setattr(module,'generate_sql',lambda q,ds:('SELECT COUNT(*) AS count FROM data',{'model':'mock'}))
+    d=client.post('/api/demo').json()
+    r=client.post('/api/ask',json={'dataset_id':d['id'],'question':'多少订单','mode':'ai'})
+    assert r.json()['rows']==[[10]] and r.json()['model_info']['model']=='mock'
+
+def test_ai_unsafe_output(monkeypatch):
+    import importlib
+    module=importlib.import_module('backend.app')
+    monkeypatch.setattr(module,'generate_sql',lambda q,ds:('DROP TABLE data',{}))
+    d=client.post('/api/demo').json()
+    assert client.post('/api/ask',json={'dataset_id':d['id'],'question':'x','mode':'ai'}).status_code==400
+
+def test_invalid_mode_and_whitespace():
+    d=client.post('/api/demo').json()
+    assert client.post('/api/ask',json={'dataset_id':d['id'],'question':'x','mode':'fake'}).status_code==422
