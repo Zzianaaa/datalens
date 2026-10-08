@@ -15,3 +15,5 @@ nav a{padding:8px 10px;color:#b7c9bf;text-decoration:none}section{scroll-margin-
 .browse-controls input[type=checkbox]{flex:none;min-width:0;width:auto}.browse-controls>label{display:flex;align-items:center;gap:8px}
 
 .task-board{display:grid;grid-template-columns:repeat(3,minmax(180px,1fr));gap:16px;overflow:auto}.task-board>section{background:#f4f7f1;padding:14px;border-radius:8px}.task-board h3{font-size:14px}.task-card{background:white;border:1px solid #e0e6dd;border-radius:8px;padding:16px;margin:12px 0;overflow-wrap:anywhere}.task-card p{font-size:12px}.task-card select{width:100%;margin-bottom:8px}.task-notes{white-space:pre-wrap}.overdue{color:#ad5139}.goal-row{padding:14px 0}.goal-row progress{width:75%;height:15px;margin-right:12px;accent-color:#287c66}@media(max-width:650px){.task-board{grid-template-columns:1fr}.goal-row progress{width:65%}}
+
+.chips button.primary{background:#287c66;color:white;border-color:#287c66}
