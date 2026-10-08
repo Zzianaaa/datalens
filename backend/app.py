@@ -10,8 +10,9 @@ from .core import parse_csv, demo_sql, run_query, MAX_BYTES
 from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
+from .operations import clean_dataset, business_dashboard
 
-app = FastAPI(title='DataLens API', version='0.4.0')
+app = FastAPI(title='DataLens API', version='0.5.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -45,7 +46,9 @@ def get_dataset(key):
     return entry[1]
 
 def store(raw):
-    ds = parse_csv(raw)
+    return store_dataset(parse_csv(raw))
+
+def store_dataset(ds):
     key = secrets.token_urlsafe(24)
     with LOCK:
         now = time.time()
@@ -56,6 +59,34 @@ def store(raw):
             raise ValueError('已达到 10 份数据上限，请移除不用的数据或等待过期')
         DATA[key] = (now, ds)
     return describe(key, ds)
+
+class CleanRequest(BaseModel):
+    deduplicate: bool = False
+    trim_text: bool = False
+    drop_missing: bool = False
+    preview: bool = True
+
+class DashboardRequest(BaseModel):
+    amount: str
+    category: str
+    date: str | None = None
+    status: str | None = None
+    status_value: str | None = None
+
+@app.post('/api/datasets/{key}/clean')
+def clean(key: str, body: CleanRequest):
+    try:
+        cleaned, report = clean_dataset(get_dataset(key), body.deduplicate, body.trim_text, body.drop_missing)
+        return {'report':report,'preview':cleaned['rows'][:5]} if body.preview else {'report':report,'dataset':store_dataset(cleaned)}
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
+
+@app.post('/api/datasets/{key}/dashboard')
+def dashboard(key: str, body: DashboardRequest):
+    try:
+        return business_dashboard(get_dataset(key), **body.model_dump())
+    except ValueError as exc:
+        raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
 def config():
