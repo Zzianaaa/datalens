@@ -1,7 +1,7 @@
 """Deterministic, read-only cross-module business alerts."""
 from datetime import date
 from .library import connect
-from . import inventory, tasks, receivables
+from . import inventory, tasks, receivables, payables
 
 
 def listing(today: date):
@@ -10,6 +10,7 @@ def listing(today: date):
         inventory.initialize(con)
         tasks.initialize(con)
         receivables.initialize(con)
+        payables.initialize(con)
         con.execute('BEGIN')
         for item in con.execute('SELECT * FROM inventory_items ORDER BY sku'):
             pending=con.execute("SELECT COALESCE(SUM(ordered-received),0) FROM purchase_orders WHERE item_id=? AND status='open'",(item['id'],)).fetchone()[0]
@@ -29,6 +30,8 @@ def listing(today: date):
         for invoice in con.execute('SELECT * FROM receivables WHERE paid<amount ORDER BY due'):
             if invoice['due']<today.isoformat():
                 alerts.append({'id':'cash:'+invoice['id'],'category':'回款','severity':'高','title':invoice['reference']+'回款逾期','detail':f"客户 {invoice['customer']}，截止 {invoice['due']}，未收 {(invoice['amount']-invoice['paid'])/100:.2f} 元。",'target':'cash'})
+        for bill in con.execute('SELECT p.*,o.supplier,i.sku FROM payables p JOIN purchase_receipts r ON r.id=p.receipt_id JOIN purchase_orders o ON o.id=r.order_id JOIN inventory_items i ON i.id=o.item_id WHERE p.paid<p.amount AND p.due<? ORDER BY p.due',(today.isoformat(),)):
+            alerts.append({'id':'payable:'+bill['id'],'category':'付款','severity':'高','title':bill['supplier']+'采购付款逾期','detail':f"商品 {bill['sku']}，截止 {bill['due']}，未付 {(bill['amount']-bill['paid'])/100:.2f} 元。",'target':'payables'})
     rank={'高':0,'中':1,'提示':2}
     alerts.sort(key=lambda a:rank[a['severity']])
     return {'as_of':today.isoformat(),'alerts':alerts}
