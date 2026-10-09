@@ -37,3 +37,24 @@ def test_cross_module_totals_and_date_boundaries():
     assert [c['customer'] for c in data['customers']]==['客户甲','客户乙']
     receivables.reverse('overview-pay','纠错')
     assert overview.listing(date(2026,10,9))['cash']['unpaid']==25002
+
+
+def test_monthly_cash_utc_boundaries_reversals_and_zero_months():
+    from backend.library import connect
+    from backend import overview
+    from datetime import date,datetime,timezone
+    overview.listing(date(2026,1,1))
+    stamp=lambda value:datetime.fromisoformat(value).replace(tzinfo=timezone.utc).timestamp()
+    with connect() as con:
+        con.execute("INSERT INTO receivables VALUES ('i','monthly','客户',10000,0,'2026-02-01',0)")
+        for key,amount,when in [('old',1,'2024-12-31'),('jan',1001,'2025-01-01'),('dec',2002,'2025-12-31T23:59:59'),('now',3003,'2026-01-01'),('future',4004,'2026-01-02')]:
+            con.execute("INSERT INTO receipts VALUES (?,'i',?,'测试',?)",(key,amount,stamp(when)))
+        con.execute("INSERT INTO receipt_reversals VALUES ('dec','误录',0)")
+        con.execute("INSERT INTO expenses VALUES ('e','month-exp','软件',500,'2026-01-01','供应商',NULL,'说明',0)")
+        rows=overview.monthly_rows(con,date(2026,1,1))
+        assert len(rows)==12 and rows[0]['month']=='2025-02'
+        assert rows[-2]['received']==0
+        assert rows[-1]=={'month':'2026-01','received':3003,'supplier_paid':0,'expenses':500,'net':2503}
+        assert all(r['net']==0 for r in rows[:-1])
+        con.execute("INSERT INTO expense_voids VALUES ('e','误录',0)")
+        assert overview.monthly_rows(con,date(2026,1,1))[-1]['net']==3003
