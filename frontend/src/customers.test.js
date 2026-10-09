@@ -22,3 +22,14 @@ test('supplier grouping is exact and prioritizes overdue orders',()=>{
  const rows=supplierSummary([{...base,supplier:'A',due:''},{...base,supplier:'a',due:'2026-10-09'}],'2026-10-10');
  assert.deepEqual(rows.map(r=>r.supplier),['a','A']);assert.deepEqual(supplierSummary([],'2026-10-10'),[]);
 });
+
+import {salesCustomerSummary} from './SalesPanel.js';
+test('sales customer totals preserve partially closed shipments and exact customer names',()=>{
+ const base={customer:'客户A',status:'partial',ordered_amount:10001,shipped_amount:5001,paid:2001};
+ const rows=salesCustomerSummary([base,{...base,status:'cancelled',ordered_amount:7001,shipped_amount:3001,paid:1001},{...base,customer:'客户a',status:'draft',shipped_amount:0,paid:0}]);
+ assert.equal(rows.length,2);assert.equal(rows[0].customer,'客户A');assert.equal(rows[0].ordered,17002);assert.equal(rows[0].shipped,8002);assert.equal(rows[0].paid,3002);assert.equal(rows[0].unpaid,5000);assert.equal(rows[0].pending,1);assert.equal(rows[0].partial,1);assert.equal(rows[0].closed,1);
+});
+test('sales customer summary empty and settled orders',()=>{
+ assert.deepEqual(salesCustomerSummary([]),[]);
+ const row=salesCustomerSummary([{customer:'客户',status:'fulfilled',ordered_amount:101,shipped_amount:101,paid:101}])[0];assert.equal(row.unpaid,0);assert.equal(row.pending,0);
+});
