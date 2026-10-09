@@ -272,6 +272,12 @@ def purchase_cancel(key: str):
     except KeyError:raise HTTPException(404,'采购单不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+@app.post('/api/inventory/orders/{key}/followup')
+def purchase_followup(key: str):
+    try:return inventory.followup_order(key)
+    except KeyError:raise HTTPException(404,'采购单不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/alerts')
 def business_alerts(today: str):
     from datetime import date
