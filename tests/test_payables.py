@@ -66,7 +66,7 @@ def test_priced_purchase_validation_and_payment_api():
         assert c.post('/api/payments/api-payment/reverse',json={'reason':'误录'}).status_code==200
         assert c.post('/api/payables/missing/pay',json={**pay,'payment_id':'missing-payment'}).status_code==404
         assert c.get('/api/payables').status_code==200
-    assert not [a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='付款']
+    assert [a['severity'] for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='付款']==['中']
 
 
 def test_payable_capacity_failure_rolls_back_stock_and_receipt():
