@@ -90,3 +90,24 @@ def test_cash_audit_effective_flows_reversals_and_corrupt_balances():
         con.execute('UPDATE receivables SET paid=0 WHERE id=?',(key,))
         con.execute('UPDATE payables SET paid=0 WHERE id=?',(bill,))
     assert alerts.listing(day)['cash_audit']['inconsistent']==0
+
+
+def test_upcoming_cash_deadline_boundaries_and_settlement():
+    from backend import receivables,payables
+    from datetime import timedelta
+    today=date(2026,10,10)
+    ids=[receivables.create('UP-'+str(n),'客户',1001,(today+timedelta(days=n)).isoformat())['id'] for n in [-1,0,1,7,8]]
+    item=inventory.create_item('UP-PAY','商品','件',0)['id']
+    for n in [0,7,8]:
+        order=inventory.create_order(item,'供应商'+str(n),1,'',2001,(today+timedelta(days=n)).isoformat())['id']
+        inventory.receive_order(order,1,'up-pay-'+str(n))
+    data=alerts.listing(today)['alerts']
+    cash={a['id']:a for a in data if a['category']=='回款'}
+    assert [cash['cash:'+key]['severity'] for key in ids[:4]]==['高','中','提示','提示']
+    assert 'cash:'+ids[4] not in cash
+    payments=[a for a in data if a['category']=='付款']
+    assert len(payments)==2 and {a['severity'] for a in payments}=={'中','提示'}
+    receivables.receive(ids[1],1001,'结清','up-settle')
+    assert not any(a['id']=='cash:'+ids[1] for a in alerts.listing(today)['alerts'])
+    receivables.reverse('up-settle','误录')
+    assert any(a['id']=='cash:'+ids[1] for a in alerts.listing(today)['alerts'])
