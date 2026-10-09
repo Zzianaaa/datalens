@@ -1,5 +1,5 @@
 """Read-only operational overview from a single database snapshot."""
-from datetime import datetime, timezone, timedelta
+from datetime import date, datetime, timezone, timedelta
 from .library import connect
 from . import sales, tasks, payables, expenses
 
@@ -19,6 +19,16 @@ def monthly_rows(con,today):
     return list(totals.values())
 
 
+def due_rows(con,today):
+    rows=[{'period':label,'receivable_count':0,'receivable':0,'payable_count':0,'payable':0} for label in ['已逾期','今天到期','未来 1–7 天','未来 8–30 天','30 天以后']]
+    for table,count,amount in [('receivables','receivable_count','receivable'),('payables','payable_count','payable')]:
+        for record in con.execute(f'SELECT due,amount-paid AS remaining FROM {table} WHERE amount>paid'):
+            days=(date.fromisoformat(record['due'])-today).days
+            index=0 if days<0 else 1 if days==0 else 2 if days<=7 else 3 if days<=30 else 4
+            rows[index][count]+=1;rows[index][amount]+=record['remaining']
+    return rows
+
+
 def listing(today):
     day=today.isoformat()
     with connect() as con:
@@ -36,4 +46,4 @@ def listing(today):
         procurement=dict(con.execute("SELECT COUNT(*) AS pending,COALESCE(SUM(due<>'' AND due<?),0) AS overdue FROM purchase_orders WHERE status='open'",(day,)).fetchone())
         work=dict(con.execute("SELECT COUNT(*) AS pending,COALESCE(SUM(due<>'' AND due<?),0) AS overdue FROM tasks WHERE status NOT IN ('已完成','已归档')",(day,)).fetchone())
         customers=[dict(r) for r in con.execute('SELECT customer,COUNT(*) AS invoices,SUM(amount-paid) AS unpaid,SUM(CASE WHEN due<? THEN amount-paid ELSE 0 END) AS overdue FROM receivables WHERE amount>paid GROUP BY customer ORDER BY overdue DESC,unpaid DESC,customer LIMIT 5',(day,))]
-        return {'monthly':monthly_rows(con,today),'as_of':day,'sales':orders,'cash':cash,'payables':payable,'expenses':expense,'stock':stock,'procurement':procurement,'work':work,'library':{'projects':scalar('SELECT COUNT(*) FROM projects'),'datasets':scalar('SELECT COUNT(*) FROM assets WHERE archived=0'),'reports':scalar('SELECT COUNT(*) FROM reports')},'customers':customers}
+        return {'due_schedule':due_rows(con,today),'monthly':monthly_rows(con,today),'as_of':day,'sales':orders,'cash':cash,'payables':payable,'expenses':expense,'stock':stock,'procurement':procurement,'work':work,'library':{'projects':scalar('SELECT COUNT(*) FROM projects'),'datasets':scalar('SELECT COUNT(*) FROM assets WHERE archived=0'),'reports':scalar('SELECT COUNT(*) FROM reports')},'customers':customers}
