@@ -450,6 +450,43 @@ class SalesRequest(BaseModel):
         if len(value)!=10 or date.fromisoformat(value).isoformat()!=value:raise ValueError('回款截止日期无效')
         return value
 
+class SalesLineRequest(BaseModel):
+    item_id: str
+    quantity: int = Field(strict=True,ge=1,le=1000000)
+    unit_price: int = Field(strict=True,ge=1,le=100000000000)
+
+class BasketRequest(BaseModel):
+    reference: str = Field(min_length=1,max_length=80,pattern=r'\S')
+    customer: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    due: str
+    lines: list[SalesLineRequest] = Field(min_length=1,max_length=20)
+
+    @field_validator('due')
+    @classmethod
+    def valid_due(cls,value):
+        if len(value)!=10 or date.fromisoformat(value).isoformat()!=value:raise ValueError('回款截止日期无效')
+        return value
+
+class ShipmentLineRequest(BaseModel):
+    line_id: str
+    quantity: int = Field(strict=True,ge=1,le=1000000)
+
+class ShipmentRequest(BaseModel):
+    shipment_id: str = Field(min_length=8,max_length=100)
+    lines: list[ShipmentLineRequest] = Field(min_length=1,max_length=20)
+
+@app.post('/api/sales/basket')
+def sales_basket(body: BasketRequest):
+    try:return sales.create_basket(body.reference.strip(),body.customer.strip(),[l.model_dump() for l in body.lines],body.due)
+    except KeyError:raise HTTPException(404,'商品不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/sales/{key}/ship')
+def sales_ship(key: str,body: ShipmentRequest):
+    try:return sales.ship(key,[l.model_dump() for l in body.lines],body.shipment_id)
+    except KeyError:raise HTTPException(404,'订单不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/sales')
 def sales_list():return sales.listing()
 
