@@ -7,13 +7,14 @@ CATEGORIES=('租金','人员','营销','物流','软件','办公','其他')
 
 def initialize(con):
     con.execute('CREATE TABLE IF NOT EXISTS expenses (id TEXT PRIMARY KEY,reference TEXT UNIQUE NOT NULL,category TEXT NOT NULL,amount INTEGER NOT NULL,occurred TEXT NOT NULL,counterparty TEXT NOT NULL,project_id TEXT REFERENCES projects(id),note TEXT NOT NULL,created REAL NOT NULL)')
+    con.execute('CREATE TABLE IF NOT EXISTS expense_budgets (month TEXT NOT NULL,category TEXT NOT NULL,amount INTEGER NOT NULL,updated REAL NOT NULL,PRIMARY KEY(month,category))')
     con.execute('CREATE TABLE IF NOT EXISTS expense_voids (expense_id TEXT PRIMARY KEY REFERENCES expenses(id),reason TEXT NOT NULL,created REAL NOT NULL)')
 
 
 def listing():
     with connect() as con:
         initialize(con)
-        return {'expenses':[dict(r) for r in con.execute('SELECT e.*,p.name AS project_name,v.reason AS void_reason FROM expenses e LEFT JOIN projects p ON p.id=e.project_id LEFT JOIN expense_voids v ON v.expense_id=e.id ORDER BY e.occurred DESC,e.created DESC')], 'categories':list(CATEGORIES)}
+        return {'budgets':budget_rows(con),'expenses':[dict(r) for r in con.execute('SELECT e.*,p.name AS project_name,v.reason AS void_reason FROM expenses e LEFT JOIN projects p ON p.id=e.project_id LEFT JOIN expense_voids v ON v.expense_id=e.id ORDER BY e.occurred DESC,e.created DESC')], 'categories':list(CATEGORIES)}
 
 
 def create(key,reference,category,amount,occurred,counterparty,project_id,note):
@@ -44,3 +45,17 @@ def void(key,reason):
             return {'duplicate':True}
         con.execute('INSERT INTO expense_voids VALUES (?,?,?)',(key,reason,time.time()))
         return {'duplicate':False}
+
+
+def budget_rows(con):
+    return [dict(r) for r in con.execute("SELECT b.*,COALESCE((SELECT SUM(e.amount) FROM expenses e LEFT JOIN expense_voids v ON v.expense_id=e.id WHERE v.expense_id IS NULL AND substr(e.occurred,1,7)=b.month AND e.category=b.category),0) AS actual FROM expense_budgets b ORDER BY b.month DESC,b.category")]
+
+
+def save_budget(month,category,amount):
+    if category not in CATEGORIES:raise ValueError('费用类别无效')
+    with connect() as con:
+        initialize(con)
+        con.execute('BEGIN IMMEDIATE')
+        if not con.execute('SELECT 1 FROM expense_budgets WHERE month=? AND category=?',(month,category)).fetchone() and con.execute('SELECT COUNT(*) FROM expense_budgets').fetchone()[0]>=1200:raise ValueError('最多 1200 条费用预算')
+        con.execute('INSERT INTO expense_budgets VALUES (?,?,?,?) ON CONFLICT(month,category) DO UPDATE SET amount=excluded.amount,updated=excluded.updated',(month,category,amount,time.time()))
+        return {'saved':True}
