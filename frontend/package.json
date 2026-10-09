@@ -16,21 +16,3 @@
     "vite": "^7.0.0"
   }
 }
-{
-  "name": "datalens",
-  "private": true,
-  "version": "0.10.0",
-  "type": "module",
-  "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "test": "node --test src/*.test.js"
-  },
-  "dependencies": {
-    "vue": "^3.5.0",
-    "echarts": "^6.0.0"
-  },
-  "devDependencies": {
-    "vite": "^7.0.0"
-  }
-}
