@@ -18,6 +18,9 @@ def listing(today: date):
             if item['quantity']<=item['reorder_level']:
                 short=max(0,item['reorder_level']-item['quantity'])
                 alerts.append({'id':'stock:'+item['id'],'category':'库存','severity':'高' if item['quantity']==0 else '中','title':item['name']+'库存达到补货阈值','detail':f"现有 {item['quantity']} {item['unit']}，阈值 {item['reorder_level']}，待到货 {pending}；考虑待到货后的缺口 {max(0,short-pending)}。",'target':'inventory'})
+        for row in inventory.ledger_rows(con):
+            if row['difference']:
+                alerts.append({'id':'stock-ledger:'+row['id'],'category':'对账','severity':'高','title':row['sku']+'库存与流水不一致','detail':f"库存现量 {row['quantity']} {row['unit']}，全部流水净额 {row['ledger_quantity']}，差异 {row['difference']}。请核查原始记录；系统不会自动改写库存。",'target':'inventory'})
         for row in sales.fulfillment_rows(con):
             if row['shortage']:
                 alerts.append({'id':'fulfillment:'+row['item_id'],'category':'履约','severity':'高','title':row['sku']+'待履约订单缺货','detail':f"{row['orders']} 张未完成订单需发 {row['demand']} {row['unit']}，现有 {row['stock']}，当前缺货 {row['shortage']}；采购待到货 {row['incoming']}，考虑待到货后的采购缺口 {row['purchase_gap']}。库存未预占，待到货不能立即发货。",'target':'inventory','secondary_target':'sales'})
