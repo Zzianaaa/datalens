@@ -17,7 +17,9 @@ def listing(today: date):
                 short=max(0,item['reorder_level']-item['quantity'])
                 alerts.append({'id':'stock:'+item['id'],'category':'库存','severity':'高' if item['quantity']==0 else '中','title':item['name']+'库存达到补货阈值','detail':f"现有 {item['quantity']} {item['unit']}，阈值 {item['reorder_level']}，待到货 {pending}；考虑待到货后的缺口 {max(0,short-pending)}。",'target':'inventory'})
         for order in con.execute("SELECT p.*,i.sku FROM purchase_orders p JOIN inventory_items i ON i.id=p.item_id WHERE p.status='open' ORDER BY p.created"):
-            alerts.append({'id':'purchase:'+order['id'],'category':'采购','severity':'提示','title':order['sku']+'有待到货采购','detail':f"供应商 {order['supplier']}，剩余 {order['ordered']-order['received']}；请核对实际交付安排。",'target':'inventory'})
+            overdue=bool(order['due'] and order['due']<today.isoformat())
+            schedule=f"预计到货 {order['due']}" if order['due'] else '未设置预计到货日期'
+            alerts.append({'id':'purchase:'+order['id'],'category':'采购','severity':'高' if overdue else '提示','title':order['sku']+('采购已逾期' if overdue else '有待到货采购'),'detail':f"供应商 {order['supplier']}，剩余 {order['ordered']-order['received']}；{schedule}。",'target':'inventory'})
         for task in con.execute("SELECT * FROM tasks WHERE due<>'' AND status NOT IN ('已完成','已归档') ORDER BY due"):
             if task['due']<today.isoformat():
                 alerts.append({'id':'task:'+task['id'],'category':'任务','severity':'高','title':task['title']+'已逾期','detail':f"截止 {task['due']}，负责人 {task['owner'] or '未指定'}，状态 {task['status']}。",'target':'work'})
