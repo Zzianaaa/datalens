@@ -13,7 +13,7 @@ from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
 from . import library, tasks, inventory
 
-app = FastAPI(title='DataLens API', version='0.8.0')
+app = FastAPI(title='DataLens API', version='0.9.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -231,6 +231,33 @@ def add_item(body: ItemRequest):
 def stock_movement(body: MovementRequest):
     try:return inventory.move(body.item_id,body.delta,body.reason.strip())
     except KeyError:raise HTTPException(404,'商品不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+class PurchaseRequest(BaseModel):
+    item_id: str
+    supplier: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    quantity: int = Field(ge=1,le=1000000)
+
+class ReceiptRequest(BaseModel):
+    quantity: int = Field(ge=1,le=1000000)
+    receipt_id: str = Field(min_length=8,max_length=100)
+
+@app.post('/api/inventory/orders')
+def purchase_order(body: PurchaseRequest):
+    try:return inventory.create_order(body.item_id,body.supplier.strip(),body.quantity)
+    except KeyError:raise HTTPException(404,'商品不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/inventory/orders/{key}/receive')
+def purchase_receive(key: str,body: ReceiptRequest):
+    try:return inventory.receive_order(key,body.quantity,body.receipt_id)
+    except KeyError:raise HTTPException(404,'采购单不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/inventory/orders/{key}/cancel')
+def purchase_cancel(key: str):
+    try:return inventory.cancel_order(key)
+    except KeyError:raise HTTPException(404,'采购单不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
