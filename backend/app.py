@@ -11,9 +11,9 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks, inventory
+from . import library, tasks, inventory, alerts
 
-app = FastAPI(title='DataLens API', version='0.9.0')
+app = FastAPI(title='DataLens API', version='0.10.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -259,6 +259,15 @@ def purchase_cancel(key: str):
     try:return inventory.cancel_order(key)
     except KeyError:raise HTTPException(404,'采购单不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/alerts')
+def business_alerts(today: str):
+    from datetime import date
+    try:
+        day=date.fromisoformat(today)
+        if day.isoformat()!=today:raise ValueError('日期格式无效')
+    except ValueError:raise HTTPException(422,'日期必须为 YYYY-MM-DD')
+    return alerts.listing(day)
 
 @app.get('/api/config')
 def config():
