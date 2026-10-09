@@ -28,7 +28,7 @@ def test_alerts_change_with_business_state():
 def test_alerts_date_api_and_empty():
     with TestClient(app) as c:
         assert c.get('/api/alerts?today=bad').status_code==422
-        assert c.get('/api/alerts?today=2026-10-09').json()=={'as_of':'2026-10-09','alerts':[]}
+        assert c.get('/api/alerts?today=2026-10-09').json()=={'as_of':'2026-10-09','alerts':[],'cash_audit':{'checked':0,'inconsistent':0}}
 
 def test_purchase_due_boundaries_and_receiving():
     item=inventory.create_item('DUE','交期商品','件',0)['id']
@@ -61,3 +61,32 @@ def test_legacy_purchase_schema_migration():
         row=con.execute("SELECT * FROM purchase_orders WHERE id='legacy'").fetchone()
         assert row['due']=='' and row['ordered']==3 and row['received']==1
         assert row['unit_cost']==0 and row['payment_due']==''
+
+
+def test_cash_audit_effective_flows_reversals_and_corrupt_balances():
+    from backend import receivables,payables
+    from backend.library import connect
+    day=date(2026,10,10)
+    key=receivables.create('AUDIT','客户',1000,'2026-10-20')['id']
+    receivables.receive(key,500,'回款','cash-audit')
+    item=inventory.create_item('PAY','商品','件',0)['id']
+    order=inventory.create_order(item,'供应商',1,'2026-10-10',1000,'2026-10-20')['id']
+    inventory.receive_order(order,1,'pay-audit-receipt')
+    bill=payables.listing()['bills'][0]['id']
+    payables.pay(bill,300,'付款','pay-audit')
+    assert alerts.listing(day)['cash_audit']=={'checked':2,'inconsistent':0}
+    receivables.reverse('cash-audit','误录')
+    payables.reverse('pay-audit','误录')
+    assert alerts.listing(day)['cash_audit']['inconsistent']==0
+    with connect() as con:
+        con.execute('UPDATE receivables SET paid=1 WHERE id=?',(key,))
+        con.execute('UPDATE payables SET paid=1001 WHERE id=?',(bill,))
+    data=alerts.listing(day)
+    assert data['cash_audit']=={'checked':2,'inconsistent':2}
+    issues=[a for a in data['alerts'] if a['category']=='对账']
+    assert {a['target'] for a in issues}=={'cash','payables'}
+    with connect() as con:
+        assert con.execute('SELECT paid FROM receivables WHERE id=?',(key,)).fetchone()[0]==1
+        con.execute('UPDATE receivables SET paid=0 WHERE id=?',(key,))
+        con.execute('UPDATE payables SET paid=0 WHERE id=?',(bill,))
+    assert alerts.listing(day)['cash_audit']['inconsistent']==0
