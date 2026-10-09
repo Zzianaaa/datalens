@@ -18,10 +18,20 @@ def initialize(con):
     con.execute('CREATE TABLE IF NOT EXISTS purchase_receipts (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES purchase_orders(id),quantity INTEGER NOT NULL)')
 
 
+def ledger_rows(con):
+    rows=[]
+    for record in con.execute('SELECT i.*,COALESCE(SUM(m.delta),0) AS ledger_quantity,COUNT(m.id) AS movement_count FROM inventory_items i LEFT JOIN inventory_moves m ON m.item_id=i.id GROUP BY i.id ORDER BY i.sku'):
+        row=dict(record)
+        row['difference']=row['quantity']-row['ledger_quantity']
+        rows.append(row)
+    return rows
+
+
 def listing():
     with connect() as con:
         initialize(con)
-        return {'orders':[dict(r) for r in con.execute('SELECT p.*,i.sku,i.name,i.unit FROM purchase_orders p JOIN inventory_items i ON i.id=p.item_id ORDER BY p.created DESC LIMIT 500')], 'items':[dict(r) for r in con.execute('SELECT * FROM inventory_items ORDER BY sku')],
+        con.execute('BEGIN')
+        return {'reconciliation':ledger_rows(con),'orders':[dict(r) for r in con.execute('SELECT p.*,i.sku,i.name,i.unit FROM purchase_orders p JOIN inventory_items i ON i.id=p.item_id ORDER BY p.created DESC LIMIT 500')], 'items':[dict(r) for r in con.execute('SELECT * FROM inventory_items ORDER BY sku')],
                 'movements':[dict(r) for r in con.execute('SELECT m.*,i.sku,i.name FROM inventory_moves m JOIN inventory_items i ON i.id=m.item_id ORDER BY m.created DESC LIMIT 100')]}
 
 
