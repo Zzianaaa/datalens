@@ -331,6 +331,23 @@ def receipt_reverse(key: str,body: ReversalRequest):
     except KeyError:raise HTTPException(404,'回款流水不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+class CollectionTaskRequest(BaseModel):
+    customer: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    owner: str = Field(default='',max_length=80)
+    due: str
+
+    @field_validator('due')
+    @classmethod
+    def valid_date(cls,value):
+        from datetime import date
+        if date.fromisoformat(value).isoformat()!=value:raise ValueError('日期无效')
+        return value
+
+@app.post('/api/receivables/followup')
+def collection_task(body: CollectionTaskRequest):
+    try:return receivables.followup(body.customer,body.owner,body.due)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/config')
 def config():
     cfg = model_config()
