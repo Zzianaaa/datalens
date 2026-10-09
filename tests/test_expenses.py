@@ -33,3 +33,28 @@ def test_expense_api_validation_and_unknown_project():
         assert c.get('/api/expenses').json()['expenses'][0]['amount']==999
         assert c.post('/api/expenses/api-expense/void',json={'reason':'误录'}).status_code==200
         assert c.post('/api/expenses/missing/void',json={'reason':'误录'}).status_code==404
+
+def test_budget_actual_boundaries_voids_and_month_scope():
+    from backend import alerts
+    expenses.save_budget('2026-10','软件',10001)
+    expenses.save_budget('2026-09','软件',1)
+    args=('budget-expense','B1','软件',10001,'2026-10-09','',None,'订阅')
+    expenses.create(*args)
+    def warnings():return [a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='费用']
+    assert warnings()==[]
+    expenses.create('budget-extra','B2','软件',1,'2026-10-10','',None,'补充费用')
+    assert len(warnings())==1 and '超出 0.01' in warnings()[0]['detail']
+    expenses.save_budget('2026-10','软件',20000)
+    assert warnings()==[] and len(expenses.listing()['budgets'])==2
+    expenses.save_budget('2026-10','软件',10001)
+    expenses.void('budget-extra','误录')
+    assert warnings()==[]
+    budget=next(b for b in expenses.listing()['budgets'] if b['month']=='2026-10')
+    assert budget['actual']==10001
+
+def test_budget_api_validates_month_and_cents():
+    with TestClient(app) as c:
+        body={'month':'2026-10','category':'软件','amount':100}
+        for change in [{'month':'2026-13'},{'month':'2026-1'},{'amount':0},{'amount':1.2}]:
+            assert c.post('/api/expense-budgets',json={**body,**change}).status_code==422
+        assert c.post('/api/expense-budgets',json=body).status_code==200
