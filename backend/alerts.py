@@ -4,6 +4,20 @@ from .library import connect
 from . import inventory, tasks, receivables, payables, expenses, sales
 
 
+def cash_checks(con):
+    rows=[]
+    for table,flows,reversals,foreign,reverse_key,target,label in [
+        ('receivables','receipts','receipt_reversals','receivable_id','receipt_id','cash','回款'),
+        ('payables','payments','payment_reversals','payable_id','payment_id','payables','付款')]:
+        query=f"SELECT d.id,d.amount,d.paid,COALESCE(SUM(CASE WHEN v.{reverse_key} IS NULL THEN r.amount ELSE 0 END),0) AS effective FROM {table} d LEFT JOIN {flows} r ON r.{foreign}=d.id LEFT JOIN {reversals} v ON v.{reverse_key}=r.id GROUP BY d.id ORDER BY d.id"
+        for record in con.execute(query):
+            row=dict(record)
+            row.update(target=target,label=label,difference=row['paid']-row['effective'])
+            row['valid']=row['difference']==0 and 0<=row['paid']<=row['amount'] and 0<=row['effective']<=row['amount']
+            rows.append(row)
+    return rows
+
+
 def listing(today: date):
     alerts=[]
     with connect() as con:
@@ -13,6 +27,10 @@ def listing(today: date):
         payables.initialize(con)
         expenses.initialize(con)
         con.execute('BEGIN')
+        checks=cash_checks(con)
+        for row in checks:
+            if not row['valid']:
+                alerts.append({'id':'cash-ledger:'+row['target']+':'+row['id'],'category':'对账','severity':'高','title':row['label']+'单据与有效流水不一致','detail':f"单据 {row['id']}，总额 {row['amount']/100:.2f} 元，已收/已付余额 {row['paid']/100:.2f} 元，有效流水 {row['effective']/100:.2f} 元，差异 {row['difference']/100:.2f} 元。已冲销流水剔除；同时检查金额是否超出单据总额。请核查原记录，系统不自动调整余额。",'target':row['target']})
         for item in con.execute('SELECT * FROM inventory_items ORDER BY sku'):
             pending=con.execute("SELECT COALESCE(SUM(ordered-received),0) FROM purchase_orders WHERE item_id=? AND status='open'",(item['id'],)).fetchone()[0]
             if item['quantity']<=item['reorder_level']:
@@ -44,4 +62,4 @@ def listing(today: date):
                 alerts.append({'id':'budget:'+budget['month']+':'+budget['category'],'category':'费用','severity':'中','title':budget['category']+'费用超出本月预算','detail':f"月份 {budget['month']}，已登记 {budget['actual']/100:.2f} 元，预算 {budget['amount']/100:.2f} 元，超出 {(budget['actual']-budget['amount'])/100:.2f} 元。",'target':'expenses'})
     rank={'高':0,'中':1,'提示':2}
     alerts.sort(key=lambda a:rank[a['severity']])
-    return {'as_of':today.isoformat(),'alerts':alerts}
+    return {'as_of':today.isoformat(),'alerts':alerts,'cash_audit':{'checked':len(checks),'inconsistent':sum(not r['valid'] for r in checks)}}
