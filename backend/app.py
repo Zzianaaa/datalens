@@ -11,9 +11,9 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks, inventory, alerts
+from . import library, tasks, inventory, alerts, metrics
 
-app = FastAPI(title='DataLens API', version='0.10.0')
+app = FastAPI(title='DataLens API', version='0.11.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -268,6 +268,19 @@ def business_alerts(today: str):
         if day.isoformat()!=today:raise ValueError('日期格式无效')
     except ValueError:raise HTTPException(422,'日期必须为 YYYY-MM-DD')
     return alerts.listing(day)
+
+class MetricRequest(BaseModel):
+    name: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    description: str = Field(default='',max_length=1000)
+    sql: str = Field(min_length=1,max_length=10000)
+
+@app.get('/api/metrics')
+def metric_list():return {'templates':metrics.listing()}
+
+@app.post('/api/metrics')
+def metric_save(body: MetricRequest):
+    try:return metrics.save(body.name,body.description,body.sql)
+    except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
 def config():
