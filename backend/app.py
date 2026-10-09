@@ -11,9 +11,9 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks
+from . import library, tasks, inventory
 
-app = FastAPI(title='DataLens API', version='0.7.0')
+app = FastAPI(title='DataLens API', version='0.8.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -200,6 +200,37 @@ def create_goal_record(body: GoalRequest):
 def update_goal_record(key: str,body: GoalRequest):
     try:return tasks.save_goal(body.model_dump(),key)
     except KeyError:raise HTTPException(404,'目标不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+class ItemRequest(BaseModel):
+    sku: str = Field(min_length=1,max_length=80,pattern=r'\S')
+    name: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    unit: str = Field(default='件',max_length=20)
+    reorder_level: int = Field(default=5,ge=0,le=1000000000)
+
+class MovementRequest(BaseModel):
+    item_id: str
+    delta: int = Field(ge=-1000000,le=1000000)
+    reason: str = Field(min_length=1,max_length=300,pattern=r'\S')
+
+    @field_validator('delta')
+    @classmethod
+    def nonzero(cls,value):
+        if value==0:raise ValueError('数量不能为零')
+        return value
+
+@app.get('/api/inventory')
+def list_inventory():return inventory.listing()
+
+@app.post('/api/inventory/items')
+def add_item(body: ItemRequest):
+    try:return inventory.create_item(body.sku.strip(),body.name.strip(),body.unit,body.reorder_level)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/inventory/movements')
+def stock_movement(body: MovementRequest):
+    try:return inventory.move(body.item_id,body.delta,body.reason.strip())
+    except KeyError:raise HTTPException(404,'商品不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
