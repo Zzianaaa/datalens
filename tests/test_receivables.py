@@ -34,3 +34,20 @@ def test_cash_alert_clears_after_settlement():
     assert alerts.listing(date(2026,10,8))['alerts']==[]
     receivables.receive(key,10001,'全款','receipt-1')
     assert alerts.listing(date(2026,10,9))['alerts']==[]
+
+
+def test_reversal_preserves_ledger_and_reopens_balance():
+    key=receivables.create('FIX','客户',10000,'2026-10-08')['id']
+    receivables.receive(key,10000,'误录','receipt-1')
+    assert not receivables.reverse('receipt-1','金额错误')['duplicate']
+    assert receivables.reverse('receipt-1','金额错误')['duplicate']
+    with pytest.raises(ValueError):receivables.reverse('receipt-1','另一说明')
+    state=receivables.listing()
+    assert state['invoices'][0]['paid']==0
+    assert state['receipts'][0]['amount']==10000
+    assert state['receipts'][0]['reversal_reason']=='金额错误'
+    receivables.receive(key,4000,'正确回款','receipt-2')
+    assert receivables.listing()['invoices'][0]['paid']==4000
+    with TestClient(app) as c:
+        assert c.post('/api/receipts/missing/reverse',json={'reason':'错误'}).status_code==404
+        assert c.post('/api/receipts/receipt-2/reverse',json={'reason':'   '}).status_code==422
