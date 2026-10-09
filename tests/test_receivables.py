@@ -31,7 +31,7 @@ def test_cash_alert_clears_after_settlement():
     key=receivables.create('OVERDUE','示例客户',10001,'2026-10-08')['id']
     data=alerts.listing(date(2026,10,9))['alerts']
     assert data[0]['category']=='回款' and '100.01 元' in data[0]['detail']
-    assert alerts.listing(date(2026,10,8))['alerts']==[]
+    assert alerts.listing(date(2026,10,8))['alerts'][0]['severity']=='中'
     receivables.receive(key,10001,'全款','receipt-1')
     assert alerts.listing(date(2026,10,9))['alerts']==[]
 
