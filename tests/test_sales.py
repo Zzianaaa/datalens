@@ -175,3 +175,37 @@ def test_shared_stock_demand_procurement_and_cancel_flow():
     assert row['orders']==1 and row['demand']==3 and row['stock']==4
     sales.cancel(keys[1])
     assert sales.listing()['fulfillment']==[]
+
+def test_shipment_reconciliation_links_stock_and_effective_payments():
+    item,key=setup_order()
+    posted=sales.fulfill(key)
+    batch='whole:'+key
+    detail=sales.reconcile(batch)
+    assert detail['status']=='一致' and all(detail['checks'].values())
+    assert detail['lines'][0]['delta']==-2 and detail['lines'][0]['move_id']
+    receivables.receive(posted['invoice_id'],10001,'首款','reconcile-pay')
+    assert sales.reconcile(batch)['effective_paid']==10001
+    receivables.reverse('reconcile-pay','误录')
+    detail=sales.reconcile(batch)
+    assert detail['effective_paid']==0 and detail['batch']['paid']==0 and detail['status']=='一致'
+    assert detail['receipts'][0]['reversal_reason']=='误录'
+    with TestClient(app) as c:
+        assert c.get('/api/sales/shipments/'+batch).status_code==200
+        assert c.get('/api/sales/shipments/missing').status_code==404
+
+def test_reconciliation_flags_inconsistency_without_writing_and_unknown_history():
+    from backend.library import connect
+    item,key=setup_order();result=sales.fulfill(key);batch='whole:'+key
+    with connect() as con:
+        con.execute('UPDATE receivables SET amount=amount+1,paid=1 WHERE id=?',(result['invoice_id'],))
+        con.execute('UPDATE inventory_moves SET delta=-1 WHERE id=(SELECT move_id FROM sales_shipment_moves WHERE shipment_id=?)',(batch,))
+    detail=sales.reconcile(batch)
+    assert detail['status']=='需核对' and len(detail['issues'])==3
+    assert detail['checks']['amount'] is False and detail['checks']['payments'] is False and detail['checks']['stock'] is False
+    with connect() as con:
+        assert con.execute('SELECT paid FROM receivables WHERE id=?',(result['invoice_id'],)).fetchone()[0]==1
+        con.execute('DELETE FROM sales_shipment_moves WHERE shipment_id=?',(batch,))
+        con.execute('DELETE FROM sales_shipment_audit WHERE shipment_id=?',(batch,))
+        con.execute('UPDATE receivables SET amount=20002,paid=0 WHERE id=?',(result['invoice_id'],))
+    assert sales.reconcile(batch)['checks']['stock'] is None
+    assert sales.reconcile(batch)['status']=='历史批次库存未关联'
