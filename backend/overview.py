@@ -1,6 +1,22 @@
 """Read-only operational overview from a single database snapshot."""
+from datetime import datetime, timezone, timedelta
 from .library import connect
 from . import sales, tasks, payables, expenses
+
+
+def monthly_rows(con,today):
+    index=today.year*12+today.month-1
+    months=[f'{n//12:04d}-{n%12+1:02d}' for n in range(index-11,index+1)]
+    totals={m:{'month':m,'received':0,'supplier_paid':0,'expenses':0} for m in months}
+    cutoff=datetime.combine(today+timedelta(days=1),datetime.min.time(),timezone.utc).timestamp()
+    start=datetime.strptime(months[0],'%Y-%m').replace(tzinfo=timezone.utc).timestamp()
+    for table,reversal,key,field in [('receipts','receipt_reversals','receipt_id','received'),('payments','payment_reversals','payment_id','supplier_paid')]:
+        for r in con.execute(f"SELECT strftime('%Y-%m',r.created,'unixepoch') AS month,SUM(r.amount) AS amount FROM {table} r LEFT JOIN {reversal} v ON v.{key}=r.id WHERE v.{key} IS NULL AND r.created>=? AND r.created<? GROUP BY month",(start,cutoff)):
+            if r['month'] in totals:totals[r['month']][field]=r['amount']
+    for r in con.execute('SELECT substr(e.occurred,1,7) AS month,SUM(e.amount) AS amount FROM expenses e LEFT JOIN expense_voids v ON v.expense_id=e.id WHERE v.expense_id IS NULL AND e.occurred>=? AND e.occurred<=? GROUP BY month',(months[0]+'-01',today.isoformat())):
+        if r['month'] in totals:totals[r['month']]['expenses']=r['amount']
+    for row in totals.values():row['net']=row['received']-row['supplier_paid']-row['expenses']
+    return list(totals.values())
 
 
 def listing(today):
@@ -20,4 +36,4 @@ def listing(today):
         procurement=dict(con.execute("SELECT COUNT(*) AS pending,COALESCE(SUM(due<>'' AND due<?),0) AS overdue FROM purchase_orders WHERE status='open'",(day,)).fetchone())
         work=dict(con.execute("SELECT COUNT(*) AS pending,COALESCE(SUM(due<>'' AND due<?),0) AS overdue FROM tasks WHERE status NOT IN ('已完成','已归档')",(day,)).fetchone())
         customers=[dict(r) for r in con.execute('SELECT customer,COUNT(*) AS invoices,SUM(amount-paid) AS unpaid,SUM(CASE WHEN due<? THEN amount-paid ELSE 0 END) AS overdue FROM receivables WHERE amount>paid GROUP BY customer ORDER BY overdue DESC,unpaid DESC,customer LIMIT 5',(day,))]
-        return {'as_of':day,'sales':orders,'cash':cash,'payables':payable,'expenses':expense,'stock':stock,'procurement':procurement,'work':work,'library':{'projects':scalar('SELECT COUNT(*) FROM projects'),'datasets':scalar('SELECT COUNT(*) FROM assets WHERE archived=0'),'reports':scalar('SELECT COUNT(*) FROM reports')},'customers':customers}
+        return {'monthly':monthly_rows(con,today),'as_of':day,'sales':orders,'cash':cash,'payables':payable,'expenses':expense,'stock':stock,'procurement':procurement,'work':work,'library':{'projects':scalar('SELECT COUNT(*) FROM projects'),'datasets':scalar('SELECT COUNT(*) FROM assets WHERE archived=0'),'reports':scalar('SELECT COUNT(*) FROM reports')},'customers':customers}
