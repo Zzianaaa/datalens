@@ -1,5 +1,5 @@
 """Deterministic, read-only cross-module business alerts."""
-from datetime import date
+from datetime import date, timedelta
 from .library import connect
 from . import inventory, tasks, receivables, payables, expenses, sales
 
@@ -52,11 +52,17 @@ def listing(today: date):
         for goal in con.execute("SELECT * FROM goals WHERE due<>'' AND current<target ORDER BY due"):
             if goal['due']<today.isoformat():
                 alerts.append({'id':'goal:'+goal['id'],'category':'目标','severity':'中','title':goal['title']+'到期未达标','detail':f"截止 {goal['due']}，当前 {goal['current']:g} / {goal['target']:g} {goal['unit']}；目标数据由用户手工维护。",'target':'work'})
+        horizon=(today+timedelta(days=7)).isoformat()
         for invoice in con.execute('SELECT * FROM receivables WHERE paid<amount ORDER BY due'):
             if invoice['due']<today.isoformat():
                 alerts.append({'id':'cash:'+invoice['id'],'category':'回款','severity':'高','title':invoice['reference']+'回款逾期','detail':f"客户 {invoice['customer']}，截止 {invoice['due']}，未收 {(invoice['amount']-invoice['paid'])/100:.2f} 元。",'target':'cash'})
-        for bill in con.execute('SELECT p.*,o.supplier,i.sku FROM payables p JOIN purchase_receipts r ON r.id=p.receipt_id JOIN purchase_orders o ON o.id=r.order_id JOIN inventory_items i ON i.id=o.item_id WHERE p.paid<p.amount AND p.due<? ORDER BY p.due',(today.isoformat(),)):
-            alerts.append({'id':'payable:'+bill['id'],'category':'付款','severity':'高','title':bill['supplier']+'采购付款逾期','detail':f"商品 {bill['sku']}，截止 {bill['due']}，未付 {(bill['amount']-bill['paid'])/100:.2f} 元。",'target':'payables'})
+            elif invoice['due']<=horizon:
+                days=(date.fromisoformat(invoice['due'])-today).days
+                alerts.append({'id':'cash:'+invoice['id'],'category':'回款','severity':'中' if days==0 else '提示','title':invoice['reference']+('回款今天到期' if days==0 else '回款即将到期'),'detail':f"客户 {invoice['customer']}，截止 {invoice['due']}，剩余 {days} 天，未收 {(invoice['amount']-invoice['paid'])/100:.2f} 元。请安排跟进，不代表款项已到账。",'target':'cash'})
+        for bill in con.execute('SELECT p.*,o.supplier,i.sku FROM payables p JOIN purchase_receipts r ON r.id=p.receipt_id JOIN purchase_orders o ON o.id=r.order_id JOIN inventory_items i ON i.id=o.item_id WHERE p.paid<p.amount AND p.due<=? ORDER BY p.due',(horizon,)):
+            days=(date.fromisoformat(bill['due'])-today).days
+            label='采购付款逾期' if days<0 else '采购付款今天到期' if days==0 else '采购付款即将到期'
+            alerts.append({'id':'payable:'+bill['id'],'category':'付款','severity':'高' if days<0 else '中' if days==0 else '提示','title':bill['supplier']+label,'detail':f"商品 {bill['sku']}，截止 {bill['due']}，未付 {(bill['amount']-bill['paid'])/100:.2f} 元。"+('请安排付款，平台不会执行转账。' if days>=0 else ''),'target':'payables'})
         for budget in expenses.budget_rows(con):
             if budget['month']==today.isoformat()[:7] and budget['actual']>budget['amount']:
                 alerts.append({'id':'budget:'+budget['month']+':'+budget['category'],'category':'费用','severity':'中','title':budget['category']+'费用超出本月预算','detail':f"月份 {budget['month']}，已登记 {budget['actual']/100:.2f} 元，预算 {budget['amount']/100:.2f} 元，超出 {(budget['actual']-budget['amount'])/100:.2f} 元。",'target':'expenses'})
