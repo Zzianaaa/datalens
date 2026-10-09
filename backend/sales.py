@@ -113,7 +113,10 @@ def fulfill(key):
         con.execute('BEGIN IMMEDIATE')
         order=con.execute('SELECT * FROM sales_orders WHERE id=?',(key,)).fetchone()
         if order is None:raise KeyError(key)
-        if order['status']=='fulfilled':return {'duplicate':True,'invoice_id':order['invoice_id']}
+        if order['status']=='fulfilled':
+            previous=con.execute('SELECT invoice_id FROM sales_shipments WHERE id=?',('whole:'+key,)).fetchone()
+            return {'duplicate':True,'invoice_id':previous['invoice_id'] if previous else order['invoice_id']}
+        if order['status']=='cancelled':raise ValueError('订单已关闭，不能继续发货')
         lines=[{'line_id':r['id'],'quantity':r['quantity']-r['shipped']} for r in con.execute('SELECT * FROM sales_lines WHERE order_id=? AND shipped<quantity',(key,))]
         return _ship(con,key,lines,'whole:'+key)
 
