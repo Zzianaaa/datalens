@@ -13,7 +13,7 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks, inventory, alerts, metrics, receivables, sales, overview
+from . import library, tasks, inventory, alerts, metrics, receivables, sales, overview, payables, expenses
 
 app = FastAPI(title='DataLens API', version='0.12.0')
 DATA = {}
@@ -240,8 +240,10 @@ class PurchaseRequest(BaseModel):
     supplier: str = Field(min_length=1,max_length=120,pattern=r'\S')
     quantity: int = Field(ge=1,le=1000000)
     due: str = ''
+    unit_cost: int = Field(default=0,strict=True,ge=0,le=100000000000)
+    payment_due: str = ''
 
-    @field_validator('due')
+    @field_validator('due','payment_due')
     @classmethod
     def valid_due(cls,value):
         if value and (len(value)!=10 or date.fromisoformat(value).isoformat()!=value):
@@ -254,7 +256,7 @@ class ReceiptRequest(BaseModel):
 
 @app.post('/api/inventory/orders')
 def purchase_order(body: PurchaseRequest):
-    try:return inventory.create_order(body.item_id,body.supplier.strip(),body.quantity,body.due)
+    try:return inventory.create_order(body.item_id,body.supplier.strip(),body.quantity,body.due,body.unit_cost,body.payment_due)
     except KeyError:raise HTTPException(404,'商品不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
@@ -471,6 +473,59 @@ def sales_cancel(key: str):
 
 @app.get('/api/overview')
 def overview_list(today: date):return overview.listing(today)
+
+class PaymentRequest(BaseModel):
+    amount: int = Field(strict=True,ge=1,le=100000000000)
+    note: str = Field(min_length=1,max_length=300,pattern=r'\S')
+    payment_id: str = Field(min_length=8,max_length=100)
+
+class PaymentReversalRequest(BaseModel):
+    reason: str = Field(min_length=1,max_length=300,pattern=r'\S')
+
+@app.get('/api/payables')
+def payables_list():return payables.listing()
+
+@app.post('/api/payables/{key}/pay')
+def payable_pay(key: str,body: PaymentRequest):
+    try:return payables.pay(key,body.amount,body.note.strip(),body.payment_id)
+    except KeyError:raise HTTPException(404,'应付记录不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/payments/{key}/reverse')
+def payment_reverse(key: str,body: PaymentReversalRequest):
+    try:return payables.reverse(key,body.reason.strip())
+    except KeyError:raise HTTPException(404,'付款流水不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+class ExpenseRequest(BaseModel):
+    expense_id: str = Field(min_length=8,max_length=100)
+    reference: str = Field(min_length=1,max_length=80,pattern=r'\S')
+    category: Literal['租金','人员','营销','物流','软件','办公','其他']
+    amount: int = Field(strict=True,ge=1,le=100000000000)
+    occurred: str
+    counterparty: str = Field(default='',max_length=120)
+    project_id: str | None = None
+    note: str = Field(min_length=1,max_length=300,pattern=r'\S')
+
+    @field_validator('occurred')
+    @classmethod
+    def valid_occurred(cls,value):
+        if len(value)!=10 or date.fromisoformat(value).isoformat()!=value:raise ValueError('费用日期无效')
+        return value
+
+@app.get('/api/expenses')
+def expenses_list():return expenses.listing()
+
+@app.post('/api/expenses')
+def expense_create(body: ExpenseRequest):
+    try:return expenses.create(body.expense_id,body.reference.strip(),body.category,body.amount,body.occurred,body.counterparty.strip(),body.project_id,body.note.strip())
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/expenses/{key}/void')
+def expense_void(key: str,body: PaymentReversalRequest):
+    try:return expenses.void(key,body.reason.strip())
+    except KeyError:raise HTTPException(404,'费用记录不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
 
 if (ROOT / 'frontend/dist').exists():
     app.mount('/', StaticFiles(directory=ROOT / 'frontend/dist', html=True), name='frontend')
