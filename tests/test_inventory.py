@@ -71,3 +71,31 @@ def test_full_ledger_reconciliation_and_read_only_alert():
     assert row['difference']==1 and row['quantity']==101
     with TestClient(app) as client:
         assert client.get('/api/inventory').json()['reconciliation'][0]['difference']==1
+
+
+def test_procurement_followup_reuses_open_task_and_preserves_snapshot():
+    from backend import tasks
+    item=inventory.create_item('FOLLOW','商品','件',0)['id']
+    order=inventory.create_order(item,'供应商',5,'2026-10-09')['id']
+    first=inventory.followup_order(order)
+    assert not first['existing']
+    assert inventory.followup_order(order)=={'id':first['id'],'existing':True}
+    task=tasks.listing()['tasks'][0]
+    assert task['due']=='2026-10-09' and '未到货 5 件' in task['notes']
+    inventory.receive_order(order,2,'follow-receipt')
+    assert inventory.followup_order(order)['id']==first['id']
+    tasks.save_task({**task,'status':'已完成'},first['id'])
+    second=inventory.followup_order(order)
+    assert second['id']!=first['id']
+    assert '未到货 3 件' in tasks.listing()['tasks'][0]['notes']
+    inventory.cancel_order(order)
+    with pytest.raises(ValueError):inventory.followup_order(order)
+    assert tasks.listing()['tasks'][0]['status']=='待处理'
+    with TestClient(app) as client:
+        assert client.post('/api/inventory/orders/missing/followup').status_code==404
+        assert client.post('/api/inventory/orders/'+order+'/followup').status_code==400
+    order2=inventory.create_order(item,'供应商',1)['id']
+    assert tasks.listing()['tasks']
+    with TestClient(app) as client:
+        assert client.post('/api/inventory/orders/'+order2+'/followup').status_code==200
+    assert tasks.listing()['tasks'][0]['due']==''
