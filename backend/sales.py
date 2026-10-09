@@ -21,6 +21,17 @@ def initialize(con):
         con.commit()
 
 
+def fulfillment_rows(con):
+    rows=[]
+    for r in con.execute("SELECT i.id AS item_id,i.sku,i.name,i.unit,i.quantity AS stock,SUM(l.quantity-l.shipped) AS demand,COUNT(DISTINCT s.id) AS orders FROM sales_lines l JOIN sales_orders s ON s.id=l.order_id JOIN inventory_items i ON i.id=l.item_id WHERE s.status IN ('draft','partial') AND l.shipped<l.quantity GROUP BY i.id ORDER BY i.sku"):
+        row=dict(r)
+        row['incoming']=con.execute("SELECT COALESCE(SUM(ordered-received),0) FROM purchase_orders WHERE item_id=? AND status='open'",(r['item_id'],)).fetchone()[0]
+        row['shortage']=max(0,row['demand']-row['stock'])
+        row['purchase_gap']=max(0,row['shortage']-row['incoming'])
+        rows.append(row)
+    return rows
+
+
 def listing():
     with connect() as con:
         initialize(con)
@@ -34,7 +45,7 @@ def listing():
             order['paid']=con.execute('SELECT COALESCE(SUM(paid),0) FROM receivables WHERE id IN (SELECT invoice_id FROM sales_shipments WHERE order_id=? UNION SELECT invoice_id FROM sales_orders WHERE id=?)',(row['id'],row['id'])).fetchone()[0]
             orders.append(order)
         shipments=[dict(r) for r in con.execute('SELECT b.*,s.reference,s.customer,r.reference AS invoice_reference,r.amount,r.paid FROM sales_shipments b JOIN sales_orders s ON s.id=b.order_id JOIN receivables r ON r.id=b.invoice_id ORDER BY b.created DESC LIMIT 100')]
-        return {'orders':orders,'shipments':shipments,'items':[dict(r) for r in con.execute('SELECT * FROM inventory_items ORDER BY sku')]}
+        return {'orders':orders,'shipments':shipments,'fulfillment':fulfillment_rows(con),'items':[dict(r) for r in con.execute('SELECT * FROM inventory_items ORDER BY sku')]}
 
 
 def create(reference,customer,item_id,quantity,unit_price,due):
