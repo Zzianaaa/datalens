@@ -1,3 +1,5 @@
+from datetime import date
+
 import secrets
 import threading
 import time
@@ -237,6 +239,14 @@ class PurchaseRequest(BaseModel):
     item_id: str
     supplier: str = Field(min_length=1,max_length=120,pattern=r'\S')
     quantity: int = Field(ge=1,le=1000000)
+    due: str = ''
+
+    @field_validator('due')
+    @classmethod
+    def valid_due(cls,value):
+        if value and (len(value)!=10 or date.fromisoformat(value).isoformat()!=value):
+            raise ValueError('预计到货日期格式应为 YYYY-MM-DD')
+        return value
 
 class ReceiptRequest(BaseModel):
     quantity: int = Field(ge=1,le=1000000)
@@ -244,7 +254,7 @@ class ReceiptRequest(BaseModel):
 
 @app.post('/api/inventory/orders')
 def purchase_order(body: PurchaseRequest):
-    try:return inventory.create_order(body.item_id,body.supplier.strip(),body.quantity)
+    try:return inventory.create_order(body.item_id,body.supplier.strip(),body.quantity,body.due)
     except KeyError:raise HTTPException(404,'商品不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
