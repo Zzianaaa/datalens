@@ -282,6 +282,14 @@ def metric_save(body: MetricRequest):
     try:return metrics.save(body.name,body.description,body.sql)
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+class MetricArchiveRequest(BaseModel):
+    archived: bool
+
+@app.put('/api/metrics/{key}/archive')
+def metric_archive(key: str,body: MetricArchiveRequest):
+    try:return metrics.archive(key,body.archived)
+    except KeyError:raise HTTPException(404,'模板不存在')
+
 @app.get('/api/config')
 def config():
     cfg = model_config()
