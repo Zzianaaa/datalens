@@ -13,7 +13,7 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks, inventory, alerts, metrics, receivables
+from . import library, tasks, inventory, alerts, metrics, receivables, sales, overview
 
 app = FastAPI(title='DataLens API', version='0.12.0')
 DATA = {}
@@ -433,6 +433,44 @@ def sql_query(body: SQLQuery):
         return result
     except ValueError as exc:
         raise HTTPException(400, str(exc))
+
+class SalesRequest(BaseModel):
+    reference: str = Field(min_length=1,max_length=80,pattern=r'\S')
+    customer: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    item_id: str
+    quantity: int = Field(strict=True,ge=1,le=1000000)
+    unit_price: int = Field(strict=True,ge=1,le=100000000000)
+    due: str
+
+    @field_validator('due')
+    @classmethod
+    def valid_due(cls,value):
+        if len(value)!=10 or date.fromisoformat(value).isoformat()!=value:raise ValueError('回款截止日期无效')
+        return value
+
+@app.get('/api/sales')
+def sales_list():return sales.listing()
+
+@app.post('/api/sales')
+def sales_create(body: SalesRequest):
+    try:return sales.create(body.reference.strip(),body.customer.strip(),body.item_id,body.quantity,body.unit_price,body.due)
+    except KeyError:raise HTTPException(404,'商品不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/sales/{key}/fulfill')
+def sales_fulfill(key: str):
+    try:return sales.fulfill(key)
+    except KeyError:raise HTTPException(404,'订单不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/sales/{key}/cancel')
+def sales_cancel(key: str):
+    try:return sales.cancel(key)
+    except KeyError:raise HTTPException(404,'订单不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.get('/api/overview')
+def overview_list(today: date):return overview.listing(today)
 
 if (ROOT / 'frontend/dist').exists():
     app.mount('/', StaticFiles(directory=ROOT / 'frontend/dist', html=True), name='frontend')
