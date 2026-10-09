@@ -527,5 +527,21 @@ def expense_void(key: str,body: PaymentReversalRequest):
     except KeyError:raise HTTPException(404,'费用记录不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+class ExpenseBudgetRequest(BaseModel):
+    month: str
+    category: Literal['租金','人员','营销','物流','软件','办公','其他']
+    amount: int = Field(strict=True,ge=1,le=100000000000)
+
+    @field_validator('month')
+    @classmethod
+    def valid_month(cls,value):
+        if len(value)!=7 or date.fromisoformat(value+'-01').strftime('%Y-%m')!=value:raise ValueError('预算月份无效')
+        return value
+
+@app.post('/api/expense-budgets')
+def expense_budget(body: ExpenseBudgetRequest):
+    try:return expenses.save_budget(body.month,body.category,body.amount)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 if (ROOT / 'frontend/dist').exists():
     app.mount('/', StaticFiles(directory=ROOT / 'frontend/dist', html=True), name='frontend')
