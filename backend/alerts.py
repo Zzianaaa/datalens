@@ -1,7 +1,7 @@
 """Deterministic, read-only cross-module business alerts."""
 from datetime import date
 from .library import connect
-from . import inventory, tasks
+from . import inventory, tasks, receivables
 
 
 def listing(today: date):
@@ -9,6 +9,7 @@ def listing(today: date):
     with connect() as con:
         inventory.initialize(con)
         tasks.initialize(con)
+        receivables.initialize(con)
         con.execute('BEGIN')
         for item in con.execute('SELECT * FROM inventory_items ORDER BY sku'):
             pending=con.execute("SELECT COALESCE(SUM(ordered-received),0) FROM purchase_orders WHERE item_id=? AND status='open'",(item['id'],)).fetchone()[0]
@@ -23,6 +24,9 @@ def listing(today: date):
         for goal in con.execute("SELECT * FROM goals WHERE due<>'' AND current<target ORDER BY due"):
             if goal['due']<today.isoformat():
                 alerts.append({'id':'goal:'+goal['id'],'category':'目标','severity':'中','title':goal['title']+'到期未达标','detail':f"截止 {goal['due']}，当前 {goal['current']:g} / {goal['target']:g} {goal['unit']}；目标数据由用户手工维护。",'target':'work'})
+        for invoice in con.execute('SELECT * FROM receivables WHERE paid<amount ORDER BY due'):
+            if invoice['due']<today.isoformat():
+                alerts.append({'id':'cash:'+invoice['id'],'category':'回款','severity':'高','title':invoice['reference']+'回款逾期','detail':f"客户 {invoice['customer']}，截止 {invoice['due']}，未收 {(invoice['amount']-invoice['paid'])/100:.2f} 元。",'target':'cash'})
     rank={'高':0,'中':1,'提示':2}
     alerts.sort(key=lambda a:rank[a['severity']])
     return {'as_of':today.isoformat(),'alerts':alerts}
