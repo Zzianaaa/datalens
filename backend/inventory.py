@@ -1,4 +1,5 @@
 """Transactional inventory ledger, quantities measured in whole units."""
+from datetime import date
 import secrets
 import time
 from .library import connect
@@ -8,6 +9,8 @@ def initialize(con):
     con.execute('CREATE TABLE IF NOT EXISTS inventory_items (id TEXT PRIMARY KEY,sku TEXT UNIQUE NOT NULL,name TEXT NOT NULL,unit TEXT NOT NULL,reorder_level INTEGER NOT NULL,quantity INTEGER NOT NULL DEFAULT 0 CHECK(quantity>=0))')
     con.execute('CREATE TABLE IF NOT EXISTS inventory_moves (id TEXT PRIMARY KEY,item_id TEXT NOT NULL REFERENCES inventory_items(id),delta INTEGER NOT NULL,reason TEXT NOT NULL,created REAL NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS purchase_orders (id TEXT PRIMARY KEY,item_id TEXT NOT NULL REFERENCES inventory_items(id),supplier TEXT NOT NULL,ordered INTEGER NOT NULL,received INTEGER NOT NULL DEFAULT 0,status TEXT NOT NULL DEFAULT \'open\',created REAL NOT NULL)')
+    if 'due' not in {r['name'] for r in con.execute('PRAGMA table_info(purchase_orders)')}:
+        con.execute("ALTER TABLE purchase_orders ADD COLUMN due TEXT NOT NULL DEFAULT ''")
     con.execute('CREATE TABLE IF NOT EXISTS purchase_receipts (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES purchase_orders(id),quantity INTEGER NOT NULL)')
 
 
@@ -41,14 +44,18 @@ def move(item_id,delta,reason):
         return {'quantity':item['quantity']+delta}
 
 
-def create_order(item_id,supplier,quantity):
+def create_order(item_id,supplier,quantity,due=''):
+    if due:
+        try:
+            if date.fromisoformat(due).isoformat()!=due:raise ValueError()
+        except ValueError:raise ValueError('预计到货日期格式应为 YYYY-MM-DD')
     with connect() as con:
         initialize(con)
         con.execute('BEGIN IMMEDIATE')
         if not con.execute('SELECT 1 FROM inventory_items WHERE id=?',(item_id,)).fetchone():raise KeyError(item_id)
         if con.execute('SELECT COUNT(*) FROM purchase_orders').fetchone()[0]>=500:raise ValueError('最多 500 张采购单')
         key=secrets.token_urlsafe(18)
-        con.execute('INSERT INTO purchase_orders(id,item_id,supplier,ordered,created) VALUES (?,?,?,?,?)',(key,item_id,supplier,quantity,time.time()))
+        con.execute('INSERT INTO purchase_orders(id,item_id,supplier,ordered,created,due) VALUES (?,?,?,?,?,?)',(key,item_id,supplier,quantity,time.time(),due))
         return {'id':key}
 
 
