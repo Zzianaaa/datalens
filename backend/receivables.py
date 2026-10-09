@@ -7,12 +7,13 @@ from .library import connect
 def initialize(con):
     con.execute('CREATE TABLE IF NOT EXISTS receivables (id TEXT PRIMARY KEY,reference TEXT UNIQUE NOT NULL,customer TEXT NOT NULL,amount INTEGER NOT NULL,paid INTEGER NOT NULL DEFAULT 0,due TEXT NOT NULL,created REAL NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS receipts (id TEXT PRIMARY KEY,receivable_id TEXT NOT NULL REFERENCES receivables(id),amount INTEGER NOT NULL,note TEXT NOT NULL,created REAL NOT NULL)')
+    con.execute('CREATE TABLE IF NOT EXISTS receipt_reversals (receipt_id TEXT PRIMARY KEY REFERENCES receipts(id),reason TEXT NOT NULL,created REAL NOT NULL)')
 
 
 def listing():
     with connect() as con:
         initialize(con)
-        return {'invoices':[dict(r) for r in con.execute('SELECT * FROM receivables ORDER BY due,id')], 'receipts':[dict(r) for r in con.execute('SELECT r.*,i.reference,i.customer FROM receipts r JOIN receivables i ON i.id=r.receivable_id ORDER BY r.created DESC LIMIT 100')]}
+        return {'invoices':[dict(r) for r in con.execute('SELECT * FROM receivables ORDER BY due,id')], 'receipts':[dict(r) for r in con.execute('SELECT r.*,i.reference,i.customer,v.reason AS reversal_reason,v.created AS reversed_at FROM receipts r JOIN receivables i ON i.id=r.receivable_id LEFT JOIN receipt_reversals v ON v.receipt_id=r.id ORDER BY r.created DESC LIMIT 100')]}
 
 
 def create(reference,customer,amount,due):
@@ -40,3 +41,18 @@ def receive(key,amount,note,receipt_id):
         con.execute('UPDATE receivables SET paid=paid+? WHERE id=?',(amount,key))
         con.execute('INSERT INTO receipts VALUES (?,?,?,?,?)',(receipt_id,key,amount,note,time.time()))
         return {'duplicate':False,'paid':invoice['paid']+amount}
+
+
+def reverse(receipt_id,reason):
+    with connect() as con:
+        initialize(con)
+        con.execute('BEGIN IMMEDIATE')
+        receipt=con.execute('SELECT * FROM receipts WHERE id=?',(receipt_id,)).fetchone()
+        if receipt is None:raise KeyError(receipt_id)
+        old=con.execute('SELECT reason FROM receipt_reversals WHERE receipt_id=?',(receipt_id,)).fetchone()
+        if old:
+            if old['reason']!=reason:raise ValueError('该流水已冲销，请保留原冲销说明')
+            return {'duplicate':True}
+        con.execute('UPDATE receivables SET paid=paid-? WHERE id=?',(receipt['amount'],receipt['receivable_id']))
+        con.execute('INSERT INTO receipt_reversals VALUES (?,?,?)',(receipt_id,reason,time.time()))
+        return {'duplicate':False}
