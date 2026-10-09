@@ -11,9 +11,9 @@ from .model import generate_sql, model_config
 from .profile import profile_dataset
 from .browse import browse_dataset
 from .operations import clean_dataset, business_dashboard
-from . import library, tasks, inventory, alerts, metrics
+from . import library, tasks, inventory, alerts, metrics, receivables
 
-app = FastAPI(title='DataLens API', version='0.11.0')
+app = FastAPI(title='DataLens API', version='0.12.0')
 DATA = {}
 LOCK = threading.Lock()
 ROOT = Path(__file__).resolve().parents[1]
@@ -289,6 +289,38 @@ class MetricArchiveRequest(BaseModel):
 def metric_archive(key: str,body: MetricArchiveRequest):
     try:return metrics.archive(key,body.archived)
     except KeyError:raise HTTPException(404,'模板不存在')
+
+class ReceivableRequest(BaseModel):
+    reference: str = Field(min_length=1,max_length=80,pattern=r'\S')
+    customer: str = Field(min_length=1,max_length=120,pattern=r'\S')
+    amount: int = Field(ge=1,le=100000000000)
+    due: str
+
+    @field_validator('due')
+    @classmethod
+    def valid_date(cls,value):
+        from datetime import date
+        if date.fromisoformat(value).isoformat()!=value:raise ValueError('日期格式无效')
+        return value
+
+class CashReceiptRequest(BaseModel):
+    amount: int = Field(ge=1,le=100000000000)
+    note: str = Field(min_length=1,max_length=300,pattern=r'\S')
+    receipt_id: str = Field(min_length=8,max_length=100)
+
+@app.get('/api/receivables')
+def receivable_list():return receivables.listing()
+
+@app.post('/api/receivables')
+def receivable_create(body: ReceivableRequest):
+    try:return receivables.create(body.reference.strip(),body.customer.strip(),body.amount,body.due)
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
+@app.post('/api/receivables/{key}/receive')
+def cash_receive(key: str,body: CashReceiptRequest):
+    try:return receivables.receive(key,body.amount,body.note.strip(),body.receipt_id)
+    except KeyError:raise HTTPException(404,'应收记录不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
 
 @app.get('/api/config')
 def config():
