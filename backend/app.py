@@ -487,6 +487,11 @@ def sales_ship(key: str,body: ShipmentRequest):
     except KeyError:raise HTTPException(404,'订单不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+@app.get('/api/sales/shipments/{shipment_id}')
+def sales_reconcile(shipment_id: str):
+    try:return sales.reconcile(shipment_id)
+    except KeyError:raise HTTPException(404,'发货批次不存在')
+
 @app.get('/api/sales')
 def sales_list():return sales.listing()
 
