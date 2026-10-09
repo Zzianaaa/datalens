@@ -1,13 +1,13 @@
 """Deterministic, read-only cross-module business alerts."""
 from datetime import date
 from .library import connect
-from . import inventory, tasks, receivables, payables, expenses
+from . import inventory, tasks, receivables, payables, expenses, sales
 
 
 def listing(today: date):
     alerts=[]
     with connect() as con:
-        inventory.initialize(con)
+        sales.initialize(con)
         tasks.initialize(con)
         receivables.initialize(con)
         payables.initialize(con)
@@ -18,6 +18,9 @@ def listing(today: date):
             if item['quantity']<=item['reorder_level']:
                 short=max(0,item['reorder_level']-item['quantity'])
                 alerts.append({'id':'stock:'+item['id'],'category':'库存','severity':'高' if item['quantity']==0 else '中','title':item['name']+'库存达到补货阈值','detail':f"现有 {item['quantity']} {item['unit']}，阈值 {item['reorder_level']}，待到货 {pending}；考虑待到货后的缺口 {max(0,short-pending)}。",'target':'inventory'})
+        for row in sales.fulfillment_rows(con):
+            if row['shortage']:
+                alerts.append({'id':'fulfillment:'+row['item_id'],'category':'履约','severity':'高','title':row['sku']+'待履约订单缺货','detail':f"{row['orders']} 张未完成订单需发 {row['demand']} {row['unit']}，现有 {row['stock']}，当前缺货 {row['shortage']}；采购待到货 {row['incoming']}，考虑待到货后的采购缺口 {row['purchase_gap']}。库存未预占，待到货不能立即发货。",'target':'inventory','secondary_target':'sales'})
         for order in con.execute("SELECT p.*,i.sku FROM purchase_orders p JOIN inventory_items i ON i.id=p.item_id WHERE p.status='open' ORDER BY p.created"):
             overdue=bool(order['due'] and order['due']<today.isoformat())
             schedule=f"预计到货 {order['due']}" if order['due'] else '未设置预计到货日期'
