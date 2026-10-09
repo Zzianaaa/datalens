@@ -51,3 +51,17 @@ def test_reversal_preserves_ledger_and_reopens_balance():
     with TestClient(app) as c:
         assert c.post('/api/receipts/missing/reverse',json={'reason':'错误'}).status_code==404
         assert c.post('/api/receipts/receipt-2/reverse',json={'reason':'   '}).status_code==422
+
+
+def test_collection_task_link_and_duplicate_prevention():
+    from backend import tasks
+    key=receivables.create('TASK','客户',10000,'2026-10-08')['id']
+    first=receivables.followup('客户','负责人','2026-10-10')
+    assert not first['existing']
+    assert receivables.followup('客户','其他人','2026-10-11')['id']==first['id']
+    task=tasks.listing()['tasks'][0]
+    assert task['owner']=='负责人' and '100.00 元' in task['notes']
+    tasks.save_task({**task,'status':'已完成'},first['id'])
+    assert receivables.followup('客户','','2026-10-12')['id']!=first['id']
+    receivables.receive(key,10000,'结清','receipt-1')
+    with pytest.raises(ValueError):receivables.followup('客户','','2026-10-12')
