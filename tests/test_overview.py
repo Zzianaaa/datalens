@@ -58,3 +58,26 @@ def test_monthly_cash_utc_boundaries_reversals_and_zero_months():
         assert all(r['net']==0 for r in rows[:-1])
         con.execute("INSERT INTO expense_voids VALUES ('e','误录',0)")
         assert overview.monthly_rows(con,date(2026,1,1))[-1]['net']==3003
+
+
+def test_due_schedule_disjoint_boundaries_partial_cash_and_reversal():
+    from datetime import timedelta
+    from backend import payables
+    today=date(2026,10,10)
+    offsets=[-1,0,1,7,8,30,31]
+    keys=[receivables.create('due-'+str(n),'客户',1001,(today+timedelta(days=n)).isoformat())['id'] for n in offsets]
+    receivables.receive(keys[2],501,'分次收款','due-receipt')
+    item=inventory.create_item('DUE-CASH','商品','件',0)['id']
+    purchase=inventory.create_order(item,'供应商',1,'',2001,today.isoformat())['id']
+    inventory.receive_order(purchase,1,'due-purchase-receipt')
+    bill=payables.listing()['bills'][0]['id']
+    payables.pay(bill,1000,'部分付款','due-payment')
+    rows=overview.listing(today)['due_schedule']
+    assert [r['receivable_count'] for r in rows]==[1,1,2,2,1]
+    assert [r['receivable'] for r in rows]==[1001,1001,1501,2002,1001]
+    assert rows[1]['payable']==1001 and rows[1]['payable_count']==1
+    assert sum(r['receivable'] for r in rows)==overview.listing(today)['cash']['unpaid']
+    payables.reverse('due-payment','误录')
+    receivables.reverse('due-receipt','误录')
+    assert overview.listing(today)['due_schedule'][1]['payable']==2001
+    assert overview.listing(today)['due_schedule'][2]['receivable']==2002
