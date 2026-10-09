@@ -153,3 +153,25 @@ def test_receivable_capacity_failure_keeps_shipment_atomic():
     assert inventory.listing()['items'][0]['quantity']==5
     assert sales.listing()['orders'][0]['lines'][0]['shipped']==0
     assert sales.listing()['shipments']==[]
+
+def test_shared_stock_demand_procurement_and_cancel_flow():
+    from datetime import date
+    from backend import alerts
+    item=inventory.create_item('DEMAND','需求商品','件',0)['id']
+    inventory.move(item,5,'期初')
+    keys=[sales.create(f'D{n}','客户',item,3,100,'2026-10-10')['id'] for n in range(2)]
+    row=sales.listing()['fulfillment'][0]
+    assert (row['orders'],row['demand'],row['stock'],row['shortage'],row['purchase_gap'])==(2,6,5,1,1)
+    warnings=lambda:[a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='履约']
+    assert len(warnings())==1 and warnings()[0]['secondary_target']=='sales'
+    purchase=inventory.create_order(item,'供应商',2)['id']
+    row=sales.listing()['fulfillment'][0]
+    assert row['incoming']==2 and row['shortage']==1 and row['purchase_gap']==0
+    assert len(warnings())==1
+    inventory.receive_order(purchase,2,'demand-receipt')
+    assert warnings()==[]
+    sales.fulfill(keys[0])
+    row=sales.listing()['fulfillment'][0]
+    assert row['orders']==1 and row['demand']==3 and row['stock']==4
+    sales.cancel(keys[1])
+    assert sales.listing()['fulfillment']==[]
