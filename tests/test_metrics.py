@@ -18,3 +18,18 @@ def test_template_api():
         assert c.post('/api/metrics',json={'name':'   ','sql':'SELECT * FROM data'}).status_code==422
         assert c.post('/api/metrics',json={'name':'预览','sql':'SELECT * FROM data LIMIT 5'}).status_code==200
         assert len(c.get('/api/metrics').json()['templates'])==1
+
+
+def test_archive_restore_and_existing_schema_migration():
+    from backend.library import connect
+    with connect() as con:
+        con.execute('CREATE TABLE metric_templates (id TEXT PRIMARY KEY,name TEXT NOT NULL,description TEXT NOT NULL,sql TEXT NOT NULL)')
+        con.execute("INSERT INTO metric_templates VALUES ('old','旧口径','','SELECT COUNT(*) FROM data')")
+    assert metrics.listing()[0]['archived']==0
+    metrics.archive('old',True)
+    assert metrics.listing()[0]['archived']==1
+    metrics.archive('old',False)
+    assert metrics.listing()[0]['sql']=='SELECT COUNT(*) FROM data'
+    with TestClient(app) as c:
+        assert c.put('/api/metrics/missing/archive',json={'archived':True}).status_code==404
+        assert c.put('/api/metrics/old/archive',json={'archived':True}).status_code==200
