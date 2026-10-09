@@ -56,3 +56,23 @@ def reverse(receipt_id,reason):
         con.execute('UPDATE receivables SET paid=paid-? WHERE id=?',(receipt['amount'],receipt['receivable_id']))
         con.execute('INSERT INTO receipt_reversals VALUES (?,?,?)',(receipt_id,reason,time.time()))
         return {'duplicate':False}
+
+
+def followup(customer,owner,due):
+    from . import tasks
+    with connect() as con:
+        initialize(con)
+        tasks.initialize(con)
+        con.execute('CREATE TABLE IF NOT EXISTS collection_tasks (customer TEXT PRIMARY KEY,task_id TEXT NOT NULL REFERENCES tasks(id))')
+        con.execute('BEGIN IMMEDIATE')
+        invoices=list(con.execute('SELECT * FROM receivables WHERE customer=? AND paid<amount',(customer,)))
+        if not invoices:raise ValueError('该客户没有未收款项')
+        existing=con.execute("SELECT t.id FROM collection_tasks c JOIN tasks t ON t.id=c.task_id WHERE c.customer=? AND t.status NOT IN ('已完成','已归档')",(customer,)).fetchone()
+        if existing:return {'id':existing['id'],'existing':True}
+        if con.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]>=500:raise ValueError('最多 500 个任务')
+        key=secrets.token_urlsafe(18)
+        balance=sum(i['amount']-i['paid'] for i in invoices)
+        notes=f'回款跟进快照：客户 {customer}，未收 {balance/100:.2f} 元，{len(invoices)} 张单据。余额变化请回到回款中心核对；任务不会自动完成。'
+        con.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)',(key,None,('跟进回款：'+customer)[:120],owner,due,'待处理',notes,time.time()))
+        con.execute('INSERT INTO collection_tasks VALUES (?,?) ON CONFLICT(customer) DO UPDATE SET task_id=excluded.task_id',(customer,key))
+        return {'id':key,'existing':False}
