@@ -49,3 +49,25 @@ def test_purchase_api_limits():
         assert c.post('/api/inventory/orders',json={'item_id':'missing','supplier':'供应商','quantity':1.5}).status_code==422
         assert c.post('/api/inventory/orders/missing/receive',json={'quantity':0,'receipt_id':'receipt-1'}).status_code==422
         assert c.post('/api/inventory/orders/missing/cancel').status_code==404
+
+
+def test_full_ledger_reconciliation_and_read_only_alert():
+    from backend.library import connect
+    from backend import alerts
+    from datetime import date
+    key=inventory.create_item('AUDIT','核对商品','件',0)['id']
+    assert inventory.listing()['reconciliation'][0]['ledger_quantity']==0
+    for n in range(105):inventory.move(key,1,'入库')
+    inventory.move(key,-5,'出库')
+    state=inventory.listing()
+    assert len(state['movements'])==100
+    row=state['reconciliation'][0]
+    assert row['quantity']==row['ledger_quantity']==100
+    assert row['movement_count']==106 and row['difference']==0
+    with connect() as con:con.execute('UPDATE inventory_items SET quantity=101 WHERE id=?',(key,))
+    notice=next(a for a in alerts.listing(date(2026,10,10))['alerts'] if a['category']=='对账')
+    assert notice['severity']=='高' and notice['target']=='inventory'
+    row=inventory.listing()['reconciliation'][0]
+    assert row['difference']==1 and row['quantity']==101
+    with TestClient(app) as client:
+        assert client.get('/api/inventory').json()['reconciliation'][0]['difference']==1
