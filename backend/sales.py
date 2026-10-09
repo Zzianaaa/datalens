@@ -13,6 +13,8 @@ def initialize(con):
     con.execute('CREATE TABLE IF NOT EXISTS sales_lines (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES sales_orders(id),item_id TEXT NOT NULL REFERENCES inventory_items(id),quantity INTEGER NOT NULL,unit_price INTEGER NOT NULL,shipped INTEGER NOT NULL DEFAULT 0,UNIQUE(order_id,item_id))')
     con.execute('CREATE TABLE IF NOT EXISTS sales_shipments (id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES sales_orders(id),payload TEXT NOT NULL,invoice_id TEXT NOT NULL REFERENCES receivables(id),created REAL NOT NULL)')
     con.execute('CREATE TABLE IF NOT EXISTS sales_shipment_lines (shipment_id TEXT NOT NULL REFERENCES sales_shipments(id),line_id TEXT NOT NULL REFERENCES sales_lines(id),quantity INTEGER NOT NULL,PRIMARY KEY(shipment_id,line_id))')
+    con.execute('CREATE TABLE IF NOT EXISTS sales_shipment_audit (shipment_id TEXT PRIMARY KEY REFERENCES sales_shipments(id))')
+    con.execute('CREATE TABLE IF NOT EXISTS sales_shipment_moves (shipment_id TEXT NOT NULL REFERENCES sales_shipments(id),line_id TEXT NOT NULL REFERENCES sales_lines(id),move_id TEXT UNIQUE NOT NULL REFERENCES inventory_moves(id),PRIMARY KEY(shipment_id,line_id))')
     # Every caller initializes before its own transaction. Migrate old orders once,
     # preserving their original stock movements, invoices and payments.
     if con.execute('SELECT 1 FROM sales_orders s WHERE NOT EXISTS (SELECT 1 FROM sales_lines l WHERE l.order_id=s.id) LIMIT 1').fetchone():
@@ -100,10 +102,13 @@ def _ship(con,key,lines,shipment_id):
     now=time.time()
     con.execute('INSERT INTO receivables(id,reference,customer,amount,due,created) VALUES (?,?,?,?,?,?)',(invoice,reference,order['customer'],amount,order['due'],now))
     con.execute('INSERT INTO sales_shipments VALUES (?,?,?,?,?)',(shipment_id,key,payload,invoice,now))
+    con.execute('INSERT INTO sales_shipment_audit VALUES (?)',(shipment_id,))
     for line,quantity in selected:
         con.execute('UPDATE inventory_items SET quantity=quantity-? WHERE id=?',(quantity,line['item_id']))
         con.execute('UPDATE sales_lines SET shipped=shipped+? WHERE id=?',(quantity,line['id']))
-        con.execute('INSERT INTO inventory_moves VALUES (?,?,?,?,?)',(secrets.token_urlsafe(18),line['item_id'],-quantity,'销售发货 '+order['reference']+f' 批次{batch}',now))
+        move_id=secrets.token_urlsafe(18)
+        con.execute('INSERT INTO inventory_moves VALUES (?,?,?,?,?)',(move_id,line['item_id'],-quantity,'销售发货 '+order['reference']+f' 批次{batch}',now))
+        con.execute('INSERT INTO sales_shipment_moves VALUES (?,?,?)',(shipment_id,line['id'],move_id))
         con.execute('INSERT INTO sales_shipment_lines VALUES (?,?,?)',(shipment_id,line['id'],quantity))
     pending=con.execute('SELECT 1 FROM sales_lines WHERE order_id=? AND shipped<quantity LIMIT 1',(key,)).fetchone()
     con.execute('UPDATE sales_orders SET status=?,invoice_id=COALESCE(invoice_id,?) WHERE id=?',('partial' if pending else 'fulfilled',invoice,key))
@@ -141,3 +146,24 @@ def cancel(key):
         if order['status']=='fulfilled':raise ValueError('已全部发货订单不能取消')
         con.execute("UPDATE sales_orders SET status='cancelled' WHERE id=?",(key,))
         return {'cancelled':True}
+
+
+def reconcile(shipment_id):
+    with connect() as con:
+        initialize(con)
+        con.execute('BEGIN')
+        row=con.execute('SELECT b.*,s.reference,s.customer,r.reference AS invoice_reference,r.amount,r.paid,r.due FROM sales_shipments b JOIN sales_orders s ON s.id=b.order_id JOIN receivables r ON r.id=b.invoice_id WHERE b.id=?',(shipment_id,)).fetchone()
+        if row is None:raise KeyError(shipment_id)
+        batch=dict(row)
+        lines=[dict(r) for r in con.execute('SELECT l.id AS line_id,l.item_id,i.sku,i.name,i.unit,d.quantity,l.unit_price,m.move_id,v.delta,v.item_id AS move_item_id FROM sales_shipment_lines d JOIN sales_lines l ON l.id=d.line_id JOIN inventory_items i ON i.id=l.item_id LEFT JOIN sales_shipment_moves m ON m.shipment_id=d.shipment_id AND m.line_id=d.line_id LEFT JOIN inventory_moves v ON v.id=m.move_id WHERE d.shipment_id=? ORDER BY i.sku',(shipment_id,))]
+        receipts=[dict(r) for r in con.execute('SELECT r.*,v.reason AS reversal_reason,v.created AS reversed_at FROM receipts r LEFT JOIN receipt_reversals v ON v.receipt_id=r.id WHERE r.receivable_id=? ORDER BY r.created,r.id',(row['invoice_id'],))]
+        line_amount=sum(l['quantity']*l['unit_price'] for l in lines)
+        effective_paid=sum(r['amount'] for r in receipts if r['reversed_at'] is None)
+        tracked=con.execute('SELECT 1 FROM sales_shipment_audit WHERE shipment_id=?',(shipment_id,)).fetchone() is not None
+        checks={'amount':bool(lines) and line_amount==row['amount'],'payments':effective_paid==row['paid'],'balance':0<=row['paid']<=row['amount'],'stock':all(l['move_id'] and l['delta']==-l['quantity'] and l['move_item_id']==l['item_id'] for l in lines) and bool(lines) if tracked else None}
+        issues=[]
+        if not checks['amount']:issues.append('商品金额与应收金额不一致')
+        if not checks['payments']:issues.append('有效回款流水与已收余额不一致')
+        if not checks['balance']:issues.append('已收余额超出应收范围')
+        if checks['stock'] is False:issues.append('发货商品与关联出库流水不一致')
+        return {'batch':batch,'lines':lines,'receipts':receipts,'line_amount':line_amount,'effective_paid':effective_paid,'unpaid':row['amount']-row['paid'],'checks':checks,'issues':issues,'status':'需核对' if issues else '一致' if tracked else '历史批次库存未关联'}
