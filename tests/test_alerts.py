@@ -29,3 +29,34 @@ def test_alerts_date_api_and_empty():
     with TestClient(app) as c:
         assert c.get('/api/alerts?today=bad').status_code==422
         assert c.get('/api/alerts?today=2026-10-09').json()=={'as_of':'2026-10-09','alerts':[]}
+
+def test_purchase_due_boundaries_and_receiving():
+    item=inventory.create_item('DUE','交期商品','件',0)['id']
+    keys=[inventory.create_order(item,'供应商',2,due)['id'] for due in ['2026-10-08','2026-10-09','2026-10-10','']]
+    def purchases():return {a['id'].split(':',1)[1]:a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='采购'}
+    assert [purchases()[k]['severity'] for k in keys]==['高','提示','提示','提示']
+    inventory.receive_order(keys[0],1,'partial-due')
+    assert '剩余 1' in purchases()[keys[0]]['detail']
+    inventory.receive_order(keys[0],1,'final-due')
+    inventory.cancel_order(keys[1])
+    assert keys[0] not in purchases() and keys[1] not in purchases()
+
+def test_purchase_due_api_validation():
+    item=inventory.create_item('API-DUE','日期商品','件',0)['id']
+    with TestClient(app) as c:
+        body={'item_id':item,'supplier':'供应商','quantity':1}
+        for due in ['2026-02-30','20261009','2026-1-01']:
+            assert c.post('/api/inventory/orders',json={**body,'due':due}).status_code==422
+        assert c.post('/api/inventory/orders',json={**body,'due':'2026-10-09'}).status_code==200
+        assert inventory.listing()['orders'][0]['due']=='2026-10-09'
+
+def test_legacy_purchase_schema_migration():
+    from backend.library import connect
+    with connect() as con:
+        con.execute("CREATE TABLE purchase_orders (id TEXT PRIMARY KEY,item_id TEXT,supplier TEXT,ordered INTEGER,received INTEGER DEFAULT 0,status TEXT DEFAULT 'open',created REAL)")
+        con.execute("INSERT INTO purchase_orders VALUES ('legacy','item','供应商',3,1,'open',0)")
+    with connect() as con:
+        inventory.initialize(con)
+        inventory.initialize(con)
+        row=con.execute("SELECT * FROM purchase_orders WHERE id='legacy'").fetchone()
+        assert row['due']=='' and row['ordered']==3 and row['received']==1
