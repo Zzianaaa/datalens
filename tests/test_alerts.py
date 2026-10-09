@@ -60,3 +60,4 @@ def test_legacy_purchase_schema_migration():
         inventory.initialize(con)
         row=con.execute("SELECT * FROM purchase_orders WHERE id='legacy'").fetchone()
         assert row['due']=='' and row['ordered']==3 and row['received']==1
+        assert row['unit_cost']==0 and row['payment_due']==''
