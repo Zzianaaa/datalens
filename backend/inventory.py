@@ -113,3 +113,23 @@ def cancel_order(key):
         if order['status']!='open':raise ValueError('只能取消待到货的采购单')
         con.execute("UPDATE purchase_orders SET status='cancelled' WHERE id=?",(key,))
         return {'status':'cancelled'}
+
+
+def followup_order(order_id):
+    from . import tasks
+    with connect() as con:
+        initialize(con)
+        tasks.initialize(con)
+        con.execute('CREATE TABLE IF NOT EXISTS procurement_tasks (order_id TEXT PRIMARY KEY REFERENCES purchase_orders(id),task_id TEXT NOT NULL REFERENCES tasks(id))')
+        con.execute('BEGIN IMMEDIATE')
+        order=con.execute('SELECT p.*,i.sku,i.unit FROM purchase_orders p JOIN inventory_items i ON i.id=p.item_id WHERE p.id=?',(order_id,)).fetchone()
+        if order is None:raise KeyError(order_id)
+        if order['status']!='open' or order['ordered']<=order['received']:raise ValueError('采购单没有待到货余量')
+        existing=con.execute("SELECT t.id FROM procurement_tasks p JOIN tasks t ON t.id=p.task_id WHERE p.order_id=? AND t.status NOT IN ('已完成','已归档')",(order_id,)).fetchone()
+        if existing:return {'id':existing['id'],'existing':True}
+        if con.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]>=500:raise ValueError('最多 500 个任务')
+        key=secrets.token_urlsafe(18)
+        notes=f"采购交期跟进快照：采购单 {order_id}，供应商 {order['supplier']}，商品 {order['sku']}，未到货 {order['ordered']-order['received']} {order['unit']}，预计到货 {order['due'] or '未设置'}。请到库存采购核对最新状态；到货或取消不会自动完成任务。"
+        con.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)',(key,None,('跟进采购：'+order['supplier']+' / '+order['sku'])[:120],'',order['due'],'待处理',notes,time.time()))
+        con.execute('INSERT INTO procurement_tasks VALUES (?,?) ON CONFLICT(order_id) DO UPDATE SET task_id=excluded.task_id',(order_id,key))
+        return {'id':key,'existing':False}
