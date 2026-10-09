@@ -322,6 +322,15 @@ def cash_receive(key: str,body: CashReceiptRequest):
     except KeyError:raise HTTPException(404,'应收记录不存在')
     except ValueError as exc:raise HTTPException(400,str(exc))
 
+class ReversalRequest(BaseModel):
+    reason: str = Field(min_length=1,max_length=300,pattern=r'\S')
+
+@app.post('/api/receipts/{key}/reverse')
+def receipt_reverse(key: str,body: ReversalRequest):
+    try:return receivables.reverse(key,body.reason.strip())
+    except KeyError:raise HTTPException(404,'回款流水不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/config')
 def config():
     cfg = model_config()
