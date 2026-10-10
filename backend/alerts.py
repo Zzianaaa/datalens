@@ -56,6 +56,9 @@ def listing(today: date):
         for goal in con.execute("SELECT * FROM goals WHERE due<>'' AND current<target ORDER BY due"):
             if goal['due']<today.isoformat():
                 alerts.append({'id':'goal:'+goal['id'],'category':'目标','severity':'中','title':goal['title']+'到期未达标','detail':f"截止 {goal['due']}，当前 {goal['current']:g} / {goal['target']:g} {goal['unit']}；目标数据由用户手工维护。",'target':'work'})
+            elif goal['due']<=(today+timedelta(days=7)).isoformat():
+                days=(date.fromisoformat(goal['due'])-today).days
+                alerts.append({'id':'goal:'+goal['id'],'category':'目标','severity':'中' if days==0 else '提示','title':goal['title']+('今天到期未达标' if days==0 else '七天内到期未达标'),'detail':f"截止 {goal['due']}，剩余 {days} 天，当前 {goal['current']:g} / {goal['target']:g} {goal['unit']}；目标数据由用户手工维护，请核对进度。",'target':'work'})
         horizon=(today+timedelta(days=7)).isoformat()
         for invoice in con.execute('SELECT * FROM receivables WHERE paid<amount ORDER BY due'):
             if invoice['due']<today.isoformat():
