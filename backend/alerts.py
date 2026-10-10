@@ -49,6 +49,10 @@ def listing(today: date):
         for task in con.execute("SELECT * FROM tasks WHERE due<>'' AND status NOT IN ('已完成','已归档') ORDER BY due"):
             if task['due']<today.isoformat():
                 alerts.append({'id':'task:'+task['id'],'category':'任务','severity':'高','title':task['title']+'已逾期','detail':f"截止 {task['due']}，负责人 {task['owner'] or '未指定'}，状态 {task['status']}。",'target':'work'})
+            elif task['due']==today.isoformat():
+                alerts.append({'id':'task:'+task['id'],'category':'任务','severity':'中','title':task['title']+'今天到期','detail':f"截止 {task['due']}，负责人 {task['owner'] or '未指定'}，状态 {task['status']}。",'target':'work'})
+            elif task['due']<=(today+timedelta(days=7)).isoformat():
+                alerts.append({'id':'task:'+task['id'],'category':'任务','severity':'提示','title':task['title']+'七天内到期','detail':f"截止 {task['due']}，负责人 {task['owner'] or '未指定'}，状态 {task['status']}。",'target':'work'})
         for goal in con.execute("SELECT * FROM goals WHERE due<>'' AND current<target ORDER BY due"):
             if goal['due']<today.isoformat():
                 alerts.append({'id':'goal:'+goal['id'],'category':'目标','severity':'中','title':goal['title']+'到期未达标','detail':f"截止 {goal['due']}，当前 {goal['current']:g} / {goal['target']:g} {goal['unit']}；目标数据由用户手工维护。",'target':'work'})
