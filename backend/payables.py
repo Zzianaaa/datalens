@@ -53,3 +53,22 @@ def reverse(payment_id,reason):
         con.execute('UPDATE payables SET paid=paid-? WHERE id=?',(payment['amount'],payment['payable_id']))
         con.execute('INSERT INTO payment_reversals VALUES (?,?,?)',(payment_id,reason,time.time()))
         return {'duplicate':False}
+
+
+def followup(key):
+    from . import inventory,tasks
+    with connect() as con:
+        inventory.initialize(con);initialize(con);tasks.initialize(con)
+        con.execute('CREATE TABLE IF NOT EXISTS payable_tasks (payable_id TEXT PRIMARY KEY REFERENCES payables(id),task_id TEXT NOT NULL REFERENCES tasks(id))')
+        con.execute('BEGIN IMMEDIATE')
+        bill=con.execute('SELECT p.*,o.supplier,i.sku FROM payables p JOIN purchase_receipts r ON r.id=p.receipt_id JOIN purchase_orders o ON o.id=r.order_id JOIN inventory_items i ON i.id=o.item_id WHERE p.id=?',(key,)).fetchone()
+        if bill is None:raise KeyError(key)
+        if bill['paid']>=bill['amount']:raise ValueError('应付已结清，无需建立付款任务')
+        old=con.execute("SELECT t.id FROM payable_tasks p JOIN tasks t ON t.id=p.task_id WHERE p.payable_id=? AND t.status NOT IN ('已完成','已归档')",(key,)).fetchone()
+        if old:return {'id':old['id'],'existing':True}
+        if con.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]>=500:raise ValueError('最多 500 个任务')
+        task_id=secrets.token_urlsafe(18)
+        notes=f"供应商付款安排快照：应付 {key}，供应商 {bill['supplier']}，商品 {bill['sku']}，未付 {(bill['amount']-bill['paid'])/100:.2f} 元，截止 {bill['due']}。请回供应商应付核对最新余额；任务不执行转账，付款或冲销不会自动更新任务状态。"
+        con.execute('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)',(task_id,None,('安排付款：'+bill['supplier']+' / '+bill['sku'])[:120],'',bill['due'],'待处理',notes,time.time()))
+        con.execute('INSERT INTO payable_tasks VALUES (?,?) ON CONFLICT(payable_id) DO UPDATE SET task_id=excluded.task_id',(key,task_id))
+        return {'id':task_id,'existing':False}
