@@ -13,16 +13,17 @@ def test_alerts_change_with_business_state():
     task={'title':'核对','owner':'','due':'2026-10-08','status':'进行中','notes':''}
     t=tasks.save_task(task)['id']
     tasks.save_task({**task,'title':'完成任务','status':'已完成'})
-    tasks.save_task({**task,'title':'当天任务','due':'2026-10-09'})
+    same_day=tasks.save_task({**task,'title':'当天任务','due':'2026-10-09'})['id']
     g=tasks.save_goal({**task,'title':'销售目标','unit':'元','target':100,'current':20})['id']
     data=alerts.listing(date(2026,10,9))['alerts']
-    assert len(data)==4
+    assert len(data)==5
     stock=next(a for a in data if a['category']=='库存')
     assert '待到货 8' in stock['detail'] and '缺口 0' in stock['detail']
     assert stock['severity']=='高'
     inventory.receive_order(order,8,'receipt-1')
     tasks.save_task({**task,'status':'已完成'},t)
     tasks.save_goal({**task,'title':'销售目标','unit':'元','target':100,'current':100},g)
+    tasks.save_task({**task,'title':'当天任务','due':'2026-10-09','status':'已完成'},same_day)
     assert alerts.listing(date(2026,10,9))['alerts']==[]
 
 def test_alerts_date_api_and_empty():
@@ -111,3 +112,16 @@ def test_upcoming_cash_deadline_boundaries_and_settlement():
     assert not any(a['id']=='cash:'+ids[1] for a in alerts.listing(today)['alerts'])
     receivables.reverse('up-settle','误录')
     assert any(a['id']=='cash:'+ids[1] for a in alerts.listing(today)['alerts'])
+
+
+def test_task_deadline_reminders_are_mutually_exclusive_and_clear_when_closed():
+    base={'title':'执行任务','owner':'负责人','status':'待处理','notes':''}
+    keys=[tasks.save_task({**base,'due':due})['id'] for due in ['2026-10-08','2026-10-09','2026-10-10','2026-10-16','2026-10-17','']]
+    def task_alerts():return {a['id'].split(':',1)[1]:a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='任务'}
+    rows=task_alerts()
+    assert [rows[k]['severity'] for k in keys[:4]]==['高','中','提示','提示']
+    assert keys[4] not in rows and keys[5] not in rows
+    assert rows[keys[1]]['title'].endswith('今天到期')
+    assert all(r['target']=='work' and '负责人' in r['detail'] for r in rows.values())
+    for i,key in enumerate(keys[:4]):tasks.save_task({**base,'due':['2026-10-08','2026-10-09','2026-10-10','2026-10-16'][i],'status':'已完成' if i%2 else '已归档'},key)
+    assert task_alerts()=={}
