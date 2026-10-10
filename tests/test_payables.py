@@ -98,3 +98,26 @@ def test_concurrent_legacy_schema_migration():
             row=con.execute("SELECT * FROM purchase_orders WHERE id='legacy'").fetchone()
             assert row['received']==1 and row['unit_cost']==0 and row['payment_due']==''
     with ThreadPoolExecutor(max_workers=6) as pool:list(pool.map(migrate,range(6)))
+
+
+def test_payment_followup_deduplicates_and_retains_snapshot():
+    from backend import tasks
+    item,key=order();inventory.receive_order(key,1,'task-pay-receipt')
+    bill=payables.listing()['bills'][0]['id']
+    first=payables.followup(bill)
+    assert not first['existing'] and payables.followup(bill)['id']==first['id']
+    task=tasks.listing()['tasks'][0]
+    assert '100.01 元' in task['notes'] and task['due']=='2026-10-08'
+    payables.pay(bill,4000,'首款','task-first-pay')
+    assert payables.followup(bill)['existing']
+    tasks.save_task({**task,'status':'已完成'},first['id'])
+    second=payables.followup(bill)
+    assert second['id']!=first['id'] and '60.01 元' in tasks.listing()['tasks'][0]['notes']
+    payables.pay(bill,6001,'结清','task-last-pay')
+    with pytest.raises(ValueError):payables.followup(bill)
+    assert tasks.listing()['tasks'][0]['status']=='待处理'
+    with TestClient(app) as client:
+        assert client.post('/api/payables/missing/followup').status_code==404
+        assert client.post('/api/payables/'+bill+'/followup').status_code==400
+    payables.reverse('task-last-pay','误录')
+    assert payables.followup(bill)['id']==second['id']
