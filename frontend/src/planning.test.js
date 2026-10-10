@@ -15,3 +15,19 @@ test('project expense month filtering and empty ranges',()=>{
  const rows=[{project_id:'p',project_name:'项目',amount:101,occurred:'2026-09-30',category:'软件'},{project_id:'p',project_name:'项目',amount:202,occurred:'2026-10-01',category:'软件'}];
  assert.equal(projectExpenseSummary(rows,'2026-10')[0].amount,202);assert.deepEqual(projectExpenseSummary(rows,'2026-11'),[]);assert.deepEqual(projectExpenseSummary([]),[]);
 });
+
+import {filterWorkTasks} from './WorkPanel.js';
+test('task filters combine exact owner, project, text and open deadline state',()=>{
+ const base={project_id:'p',owner:'A',title:'采购跟进',notes:'供应商',due:'2026-10-09',status:'待处理'};
+ const tasks=[base,{...base,owner:'a'},{...base,status:'已完成'},{...base,status:'已归档'},{...base,project_id:'q'}];
+ assert.deepEqual(filterWorkTasks(tasks,{project:'p',owner:'A',search:'供应商',deadline:'overdue',today:'2026-10-10'}),[base]);
+ assert.equal(filterWorkTasks(tasks,{today:'2026-10-10'}).length,4);
+ assert.equal(filterWorkTasks(tasks,{today:'2026-10-10',showArchive:true}).length,5);
+});
+test('task deadline today and unassigned undated exclude completed records',()=>{
+ const base={project_id:null,owner:'',title:'付款',notes:'',due:'',status:'进行中'};
+ const tasks=[base,{...base,due:'2026-10-10'},{...base,status:'已完成'}];
+ assert.deepEqual(filterWorkTasks(tasks,{owner:'unassigned:',deadline:'undated',today:'2026-10-10'}),[base]);
+ assert.equal(filterWorkTasks(tasks,{deadline:'today',today:'2026-10-10'}).length,1);
+ assert.deepEqual(filterWorkTasks([],{today:'2026-10-10'}),[]);
+});
