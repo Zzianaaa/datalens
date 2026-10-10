@@ -84,3 +84,7 @@ test('budget execution prioritizes overspending and keeps zero spending budget',
  const rows=budgetExecutionRows([{category:'软件',amount:101,occurred:'2026-10-10'}],[{month:'2026-10',category:'软件',amount:100},{month:'2026-10',category:'办公',amount:200}],[],'2026-10');
  assert.equal(rows[0].remaining,-1);assert.equal(rows[0].usage,101);assert.equal(rows[1].remaining,200);assert.equal(rows[1].usage,0);assert.deepEqual(budgetExecutionRows([],[],[],'2026-10'),[]);
 });
+
+test('budget execution does not present zero actuals for missing or invalid month',()=>{
+ for(const month of ['',null,undefined,'2026-13','2026-00','2026-1'])assert.deepEqual(budgetExecutionRows([],[],['软件'],month),[]);
+});
