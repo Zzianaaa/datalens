@@ -72,3 +72,15 @@ test('counterparty expense summary month boundaries and empty ranges',()=>{
  assert.equal(counterpartyExpenseSummary([a,{...a,amount:202,occurred:'2026-10-01'}],'2026-10')[0].amount,202);
  assert.deepEqual(counterpartyExpenseSummary([a],'2026-11'),[]);assert.deepEqual(counterpartyExpenseSummary([]),[]);
 });
+
+import {budgetExecutionRows} from './ExpensesPanel.js';
+test('budget execution includes unbudgeted expenses and excludes voids and other months',()=>{
+ const a={category:'软件',amount:2001,occurred:'2026-10-01'};
+ const rows=budgetExecutionRows([a,{...a,amount:9999,void_reason:'误录'},{...a,occurred:'2026-09-30'},{...a,category:'营销',amount:101}], [{month:'2026-10',category:'软件',amount:2500},{month:'2026-09',category:'营销',amount:50}],['软件','营销','办公'],'2026-10');
+ const software=rows.find(r=>r.category==='软件');assert.equal(software.actual,2001);assert.equal(software.remaining,499);assert.equal(software.usage,80.04);
+ assert.equal(rows.find(r=>r.category==='营销').limit,null);assert.equal(rows.find(r=>r.category==='办公').actual,0);
+});
+test('budget execution prioritizes overspending and keeps zero spending budget',()=>{
+ const rows=budgetExecutionRows([{category:'软件',amount:101,occurred:'2026-10-10'}],[{month:'2026-10',category:'软件',amount:100},{month:'2026-10',category:'办公',amount:200}],[],'2026-10');
+ assert.equal(rows[0].remaining,-1);assert.equal(rows[0].usage,101);assert.equal(rows[1].remaining,200);assert.equal(rows[1].usage,0);assert.deepEqual(budgetExecutionRows([],[],[],'2026-10'),[]);
+});
