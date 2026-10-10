@@ -111,3 +111,9 @@ test('arrival schedule groups open remaining costs and distinct suppliers by dat
  assert.equal(rows[1].label,'今天到货');assert.equal(rows[1].orders,2);assert.equal(rows[1].suppliers,2);assert.equal(rows[1].knownCost,303);assert.equal(rows[1].unknownCost,1);
  assert.deepEqual(arrivalSchedule([],'2026-10-11'),[]);
 });
+
+test('exact arrival date filter excludes closed and fully received purchases',()=>{
+ const a={status:'open',ordered:5,received:2,due:'2026-10-12',supplier:'A',sku:'X'};
+ assert.deepEqual(filterPurchaseOrders([a,{...a,due:'2026-10-13'},{...a,status:'cancelled'},{...a,received:5}],{arrivalDate:'2026-10-12'}),[a]);
+ assert.deepEqual(filterPurchaseOrders([a],{arrivalDate:'2026-10-12',supplier:'B'}),[]);
+});
