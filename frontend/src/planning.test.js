@@ -102,3 +102,12 @@ test('alert search combines category and priority and searches detail case insen
  assert.deepEqual(filterAlerts([a,{...a,severity:'高'},{...a,category:'付款'}],{category:'任务',severity:'中',search:' alice '}),[a]);
  assert.deepEqual(filterAlerts([a],{search:'missing'}),[]);assert.deepEqual(filterAlerts([]),[]);assert.equal(filterAlerts([a]).length,1);
 });
+
+import {arrivalSchedule} from './InventoryPanel.js';
+test('arrival schedule groups open remaining costs and distinct suppliers by date',()=>{
+ const base={status:'open',ordered:5,received:2,unit_cost:101,supplier:'A',due:'2026-10-11'};
+ const rows=arrivalSchedule([base,{...base,supplier:'B',unit_cost:0},{...base,due:'2026-10-10'},{...base,due:''},{...base,due:'2026-10-12'},{...base,status:'cancelled'},{...base,received:5}],'2026-10-11');
+ assert.deepEqual(rows.map(r=>r.key),['overdue','2026-10-11','2026-10-12','undated']);
+ assert.equal(rows[1].label,'今天到货');assert.equal(rows[1].orders,2);assert.equal(rows[1].suppliers,2);assert.equal(rows[1].knownCost,303);assert.equal(rows[1].unknownCost,1);
+ assert.deepEqual(arrivalSchedule([],'2026-10-11'),[]);
+});
