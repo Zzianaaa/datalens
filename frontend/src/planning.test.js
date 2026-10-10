@@ -46,3 +46,17 @@ test('replenishment coverage never adds negative quantities and today is not ove
  const rows=replenishmentPlan(items,[{item_id:'a',status:'open',ordered:8,received:0,due:'2026-10-10'}],'2026-10-10');
  assert.equal(rows.length,2);assert.equal(rows[0].additional,0);assert.equal(rows[0].overdueIncoming,0);assert.equal(rows.find(r=>r.id==='c').gap,0);assert.deepEqual(replenishmentPlan([],[],'2026-10-10'),[]);
 });
+
+import {filterPurchaseOrders} from './InventoryPanel.js';
+test('purchase filters combine supplier identity, partial receipt, deadline and search',()=>{
+ const a={id:'PO-1',item_id:'i',sku:'SKU-1',name:'商品',supplier:'A',status:'open',ordered:5,received:2,due:'2026-10-09'};
+ const orders=[a,{...a,supplier:'a'},{...a,received:0},{...a,status:'cancelled'},{...a,due:'2026-10-10'}];
+ assert.deepEqual(filterPurchaseOrders(orders,{supplier:'A',status:'partial',deadline:'overdue',search:'sku-1',today:'2026-10-10'}),[a]);
+ assert.equal(filterPurchaseOrders(orders,{deadline:'today',today:'2026-10-10'}).length,1);
+ assert.equal(filterPurchaseOrders(orders,{search:'商品'}).length,5);
+});
+test('purchase undated deadline excludes closed and fully received orders',()=>{
+ const a={id:'x',sku:'X',supplier:'B',status:'open',ordered:2,received:0,due:''};
+ assert.deepEqual(filterPurchaseOrders([a,{...a,status:'complete'},{...a,status:'cancelled'},{...a,received:2}],{deadline:'undated',today:'2026-10-10'}),[a]);
+ assert.deepEqual(filterPurchaseOrders([]),[]);assert.equal(filterPurchaseOrders([a],{search:' missing '}).length,0);
+});
