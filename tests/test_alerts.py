@@ -125,3 +125,17 @@ def test_task_deadline_reminders_are_mutually_exclusive_and_clear_when_closed():
     assert all(r['target']=='work' and '负责人' in r['detail'] for r in rows.values())
     for i,key in enumerate(keys[:4]):tasks.save_task({**base,'due':['2026-10-08','2026-10-09','2026-10-10','2026-10-16'][i],'status':'已完成' if i%2 else '已归档'},key)
     assert task_alerts()=={}
+
+
+def test_goal_upcoming_deadlines_and_achievement_clear_reminders():
+    base={'title':'销售目标','unit':'元','target':100,'current':20}
+    dates=['2026-10-08','2026-10-09','2026-10-10','2026-10-16','2026-10-17','']
+    keys=[tasks.save_goal({**base,'due':due})['id'] for due in dates]
+    def goals():return {a['id'].split(':',1)[1]:a for a in alerts.listing(date(2026,10,9))['alerts'] if a['category']=='目标'}
+    rows=goals()
+    assert [rows[k]['severity'] for k in keys[:4]]==['中','中','提示','提示']
+    assert keys[4] not in rows and keys[5] not in rows
+    assert rows[keys[1]]['title'].endswith('今天到期未达标')
+    assert all(r['target']=='work' and '手工维护' in r['detail'] for r in rows.values())
+    for key,due in zip(keys[:4],dates):tasks.save_goal({**base,'due':due,'current':100},key)
+    assert goals()=={}
