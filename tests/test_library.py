@@ -65,3 +65,13 @@ def test_concurrent_vault_saves_cannot_exceed_capacity(kind):
     assert sorted(results)==[False,True]
     table={'project':'projects','asset':'assets','report':'reports'}[kind]
     with library.connect() as con:assert con.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==(50 if kind=='project' else 100)
+
+@pytest.mark.parametrize('result',[None,[],{'columns':[],'rows':[]},{'columns':[1],'rows':[[1]]},{'columns':[' '],'rows':[[1]]},{'columns':['a'],'rows':[[{'nested':1}]]},{'columns':['a'],'rows':[[[1]]]}])
+def test_report_invalid_shapes_are_rejected_without_saving(result):
+    with pytest.raises(ValueError):library.save_report('无效报告',None,'问题',result)
+    assert library.listing()['reports']==[]
+
+def test_report_scalar_cells_round_trip():
+    result={'columns':['文本','数字','布尔','空值'],'rows':[['示例',10.01,True,None]]}
+    key=library.save_report('合法报告',None,'问题',result)['id']
+    assert library.get_report(key)['result']==result
