@@ -117,3 +117,10 @@ test('exact arrival date filter excludes closed and fully received purchases',()
  assert.deepEqual(filterPurchaseOrders([a,{...a,due:'2026-10-13'},{...a,status:'cancelled'},{...a,received:5}],{arrivalDate:'2026-10-12'}),[a]);
  assert.deepEqual(filterPurchaseOrders([a],{arrivalDate:'2026-10-12',supplier:'B'}),[]);
 });
+
+import {pendingItemOrders} from './SalesPanel.js';
+test('pending item orders use identity and exclude shipped lines and closed orders',()=>{
+ const o={status:'partial',lines:[{item_id:'x',quantity:5,shipped:2}]};
+ assert.deepEqual(pendingItemOrders([o,{...o,status:'cancelled'},{...o,status:'fulfilled'},{...o,lines:[{item_id:'x',quantity:5,shipped:5}]},{...o,lines:[{item_id:'y',quantity:5,shipped:2}]}],'x'),[o]);
+ assert.deepEqual(pendingItemOrders([],'x'),[]);
+});
