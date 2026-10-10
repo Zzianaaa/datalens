@@ -31,3 +31,18 @@ test('task deadline today and unassigned undated exclude completed records',()=>
  assert.equal(filterWorkTasks(tasks,{deadline:'today',today:'2026-10-10'}).length,1);
  assert.deepEqual(filterWorkTasks([],{today:'2026-10-10'}),[]);
 });
+
+import {replenishmentPlan} from './InventoryPanel.js';
+test('replenishment nets partial open purchases by item identity and excludes closed remainder',()=>{
+ const items=[{id:'a',sku:'A',name:'同名',unit:'件',quantity:2,reorder_level:10},{id:'b',sku:'B',name:'同名',unit:'箱',quantity:0,reorder_level:4}];
+ const orders=[{item_id:'a',status:'open',ordered:8,received:3,due:'2026-10-09'},{item_id:'a',status:'open',ordered:3,received:1,due:''},{item_id:'a',status:'cancelled',ordered:100,received:0},{item_id:'a',status:'complete',ordered:2,received:2}];
+ const rows=replenishmentPlan(items,orders,'2026-10-10');
+ assert.equal(rows[0].id,'b');assert.equal(rows[0].additional,4);
+ const a=rows.find(r=>r.id==='a');assert.equal(a.gap,8);assert.equal(a.incoming,7);assert.equal(a.additional,1);assert.equal(a.overdueIncoming,5);assert.equal(a.unscheduledIncoming,2);
+ assert.equal(items[0].incoming,undefined);
+});
+test('replenishment coverage never adds negative quantities and today is not overdue',()=>{
+ const items=[{id:'a',sku:'A',quantity:0,reorder_level:5},{id:'b',sku:'B',quantity:6,reorder_level:5},{id:'c',sku:'C',quantity:5,reorder_level:5}];
+ const rows=replenishmentPlan(items,[{item_id:'a',status:'open',ordered:8,received:0,due:'2026-10-10'}],'2026-10-10');
+ assert.equal(rows.length,2);assert.equal(rows[0].additional,0);assert.equal(rows[0].overdueIncoming,0);assert.equal(rows.find(r=>r.id==='c').gap,0);assert.deepEqual(replenishmentPlan([],[],'2026-10-10'),[]);
+});
