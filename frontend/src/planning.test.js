@@ -95,3 +95,10 @@ test('budget draft preserves exact cents, clears unset limit and rejects missing
  assert.equal(budgetDraft({category:'办公',limit:null},'2026-11').amount,'');
  assert.throws(()=>budgetDraft({category:'软件',limit:100},''));
 });
+
+import {filterAlerts} from './AlertsPanel.js';
+test('alert search combines category and priority and searches detail case insensitively',()=>{
+ const a={title:'付款任务',detail:'负责人 Alice',category:'任务',severity:'中'};
+ assert.deepEqual(filterAlerts([a,{...a,severity:'高'},{...a,category:'付款'}],{category:'任务',severity:'中',search:' alice '}),[a]);
+ assert.deepEqual(filterAlerts([a],{search:'missing'}),[]);assert.deepEqual(filterAlerts([]),[]);assert.equal(filterAlerts([a]).length,1);
+});
