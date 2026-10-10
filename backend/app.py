@@ -530,6 +530,12 @@ class PaymentRequest(BaseModel):
 class PaymentReversalRequest(BaseModel):
     reason: str = Field(min_length=1,max_length=300,pattern=r'\S')
 
+@app.post('/api/payables/{key}/followup')
+def payable_followup(key: str):
+    try:return payables.followup(key)
+    except KeyError:raise HTTPException(404,'应付不存在')
+    except ValueError as exc:raise HTTPException(400,str(exc))
+
 @app.get('/api/payables')
 def payables_list():return payables.listing()
 
