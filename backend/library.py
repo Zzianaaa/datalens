@@ -42,6 +42,7 @@ def listing():
 
 def create_project(name, description):
     with connect() as con:
+        con.execute('BEGIN IMMEDIATE')
         if con.execute('SELECT COUNT(*) FROM projects').fetchone()[0] >= 50:
             raise ValueError('最多 50 个项目')
         key = secrets.token_urlsafe(18)
@@ -52,6 +53,7 @@ def create_project(name, description):
 def save_dataset(name, project_id, ds):
     payload = json.dumps(ds,ensure_ascii=False,allow_nan=False)
     with connect() as con:
+        con.execute('BEGIN IMMEDIATE')
         if project_id and not con.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone():
             raise ValueError('项目不存在')
         if con.execute('SELECT COUNT(*) FROM assets').fetchone()[0] >= 100:
@@ -85,6 +87,7 @@ def save_report(title,project_id,question,result):
     payload=json.dumps({'question':question,'result':result},ensure_ascii=False,allow_nan=False)
     if len(payload.encode())>2*1024*1024: raise ValueError('报告不能超过 2 MB')
     with connect() as con:
+        con.execute('BEGIN IMMEDIATE')
         if project_id and not con.execute('SELECT 1 FROM projects WHERE id=?',(project_id,)).fetchone(): raise ValueError('项目不存在')
         if con.execute('SELECT COUNT(*) FROM reports').fetchone()[0]>=100:raise ValueError('最多保存 100 份报告')
         key=secrets.token_urlsafe(18)
