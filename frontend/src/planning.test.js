@@ -88,3 +88,10 @@ test('budget execution prioritizes overspending and keeps zero spending budget',
 test('budget execution does not present zero actuals for missing or invalid month',()=>{
  for(const month of ['',null,undefined,'2026-13','2026-00','2026-1'])assert.deepEqual(budgetExecutionRows([],[],['软件'],month),[]);
 });
+
+import {budgetDraft} from './ExpensesPanel.js';
+test('budget draft preserves exact cents, clears unset limit and rejects missing month',()=>{
+ assert.deepEqual(budgetDraft({category:'软件',limit:2501},'2026-10'),{month:'2026-10',category:'软件',amount:'25.01'});
+ assert.equal(budgetDraft({category:'办公',limit:null},'2026-11').amount,'');
+ assert.throws(()=>budgetDraft({category:'软件',limit:100},''));
+});
