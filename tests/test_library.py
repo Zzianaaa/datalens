@@ -40,3 +40,28 @@ def test_report_snapshot_validation():
     assert library.get_report(report['id'])['result']['rows'][0][1]==10
     assert library.listing()['reports'][0]['title']=='销售报告'
     with pytest.raises(ValueError):library.save_report('bad',None,'x',{'columns':['a'],'rows':[[1,2]]})
+
+@pytest.mark.parametrize('kind',['project','asset','report'])
+def test_concurrent_vault_saves_cannot_exceed_capacity(kind):
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    with library.connect() as con:
+        if kind=='project':
+            con.executemany('INSERT INTO projects VALUES (?,?,?,?)',[(str(i),'项目','',0) for i in range(49)])
+        elif kind=='asset':
+            con.executemany('INSERT INTO assets VALUES (?,?,?,?,?,?)',[(str(i),'快照',None,'{}',0,0) for i in range(99)])
+        else:
+            con.executemany('INSERT INTO reports VALUES (?,?,?,?,?)',[(str(i),'报告',None,'{}',0) for i in range(99)])
+    barrier=threading.Barrier(2)
+    def save():
+        barrier.wait()
+        try:
+            if kind=='project':library.create_project('并发项目','')
+            elif kind=='asset':library.save_dataset('并发快照',None,parse_csv(b'a\n1\n'))
+            else:library.save_report('并发报告',None,'问题',{'columns':['a'],'rows':[[1]]})
+            return True
+        except ValueError:return False
+    with ThreadPoolExecutor(max_workers=2) as pool:results=list(pool.map(lambda _:save(),range(2)))
+    assert sorted(results)==[False,True]
+    table={'project':'projects','asset':'assets','report':'reports'}[kind]
+    with library.connect() as con:assert con.execute('SELECT COUNT(*) FROM '+table).fetchone()[0]==(50 if kind=='project' else 100)
