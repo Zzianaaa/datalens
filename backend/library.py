@@ -80,10 +80,15 @@ def archive(key, archived):
 
 
 def save_report(title,project_id,question,result):
+    if not isinstance(result,dict):raise ValueError('报告结果必须为对象')
     if not isinstance(result.get('columns'),list) or not isinstance(result.get('rows'),list) or len(result['rows'])>200:
         raise ValueError('报告结果格式无效，最多 200 行')
     if len(result['columns'])>50 or any(not isinstance(row,list) or len(row)!=len(result['columns']) for row in result['rows']):
         raise ValueError('报告列数无效')
+    if not result['columns'] or any(not isinstance(c,str) or not c.strip() for c in result['columns']):
+        raise ValueError('报告列名必须为非空文本')
+    if any(cell is not None and type(cell) not in (str,int,float,bool) for row in result['rows'] for cell in row):
+        raise ValueError('报告单元格必须为文本、数字、布尔或空值')
     payload=json.dumps({'question':question,'result':result},ensure_ascii=False,allow_nan=False)
     if len(payload.encode())>2*1024*1024: raise ValueError('报告不能超过 2 MB')
     with connect() as con:
