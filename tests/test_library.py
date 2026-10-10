@@ -75,3 +75,20 @@ def test_report_scalar_cells_round_trip():
     result={'columns':['文本','数字','布尔','空值'],'rows':[['示例',10.01,True,None]]}
     key=library.save_report('合法报告',None,'问题',result)['id']
     assert library.get_report(key)['result']==result
+
+
+def test_report_api_validation_and_recovery_after_rejected_save():
+    from fastapi.testclient import TestClient
+    from backend.app import app
+    body={'title':'接口报告','question':'核对数据','result':{'columns':['a'],'rows':[[1]]}}
+    with TestClient(app) as client:
+        for result in [{'columns':[],'rows':[]},{'columns':[' '],'rows':[[1]]},{'columns':['a'],'rows':[[{'nested':1}]]}]:
+            response=client.post('/api/library/reports',json={**body,'result':result})
+            assert response.status_code==400
+            assert isinstance(response.json()['detail'],str)
+            assert client.get('/api/library').json()['reports']==[]
+        response=client.post('/api/library/reports',json=body)
+        assert response.status_code==200
+        key=response.json()['id']
+        assert client.get('/api/library/reports/'+key).json()['result']==body['result']
+        assert client.get('/api/library/reports/missing').status_code==404
