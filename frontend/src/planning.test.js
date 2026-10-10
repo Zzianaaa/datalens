@@ -60,3 +60,15 @@ test('purchase undated deadline excludes closed and fully received orders',()=>{
  assert.deepEqual(filterPurchaseOrders([a,{...a,status:'complete'},{...a,status:'cancelled'},{...a,received:2}],{deadline:'undated',today:'2026-10-10'}),[a]);
  assert.deepEqual(filterPurchaseOrders([]),[]);assert.equal(filterPurchaseOrders([a],{search:' missing '}).length,0);
 });
+
+import {counterpartyExpenseSummary} from './ExpensesPanel.js';
+test('counterparty expenses group exact names, preserve cents and exclude voids',()=>{
+ const a={counterparty:'A',amount:1001,occurred:'2026-10-01',category:'软件'};
+ const rows=counterpartyExpenseSummary([a,{...a,amount:2002,occurred:'2026-10-09',category:'营销'},{...a,counterparty:'a'},{...a,counterparty:''},{...a,amount:99999,void_reason:'误录'}]);
+ assert.equal(rows.length,3);assert.equal(rows[0].amount,3003);assert.equal(rows[0].count,2);assert.equal(rows[0].first,'2026-10-01');assert.equal(rows[0].last,'2026-10-09');assert.deepEqual(rows[0].categories,[['营销',2002],['软件',1001]]);assert.equal(rows.find(r=>r.counterparty==='').amount,1001);
+});
+test('counterparty expense summary month boundaries and empty ranges',()=>{
+ const a={counterparty:'A',amount:101,occurred:'2026-09-30',category:'软件'};
+ assert.equal(counterpartyExpenseSummary([a,{...a,amount:202,occurred:'2026-10-01'}],'2026-10')[0].amount,202);
+ assert.deepEqual(counterpartyExpenseSummary([a],'2026-11'),[]);assert.deepEqual(counterpartyExpenseSummary([]),[]);
+});
