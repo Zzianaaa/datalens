@@ -135,3 +135,5 @@ import {filterFulfillment} from './SalesPanel.js';
 test('shortage filter retains stock shortages even when incoming covers demand',()=>{const a={sku:'A',shortage:5,purchase_gap:0},b={sku:'B',shortage:0,purchase_gap:0};assert.deepEqual(filterFulfillment([a,b],true),[a]);assert.deepEqual(filterFulfillment([a,b]),[a,b]);assert.deepEqual(filterFulfillment([],true),[]);});
 
 test('fulfillment prioritizes uncovered procurement gaps without mutating source',()=>{const a={sku:'A',shortage:8,purchase_gap:0},b={sku:'B',shortage:3,purchase_gap:3};const source=[a,b];assert.deepEqual(filterFulfillment(source),[b,a]);assert.deepEqual(source,[a,b]);});
+
+test('procurement gap filter separates uncovered demand from waiting receipts',()=>{const a={sku:'A',shortage:5,purchase_gap:0},b={sku:'B',shortage:5,purchase_gap:2};assert.deepEqual(filterFulfillment([a,b],false,true),[b]);assert.deepEqual(filterFulfillment([a,b],true,true),[b]);assert.deepEqual(filterFulfillment([a],false,true),[]);});
