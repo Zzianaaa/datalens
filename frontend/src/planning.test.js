@@ -130,3 +130,6 @@ test('fulfillment export preserves units and distinguishes stock shortages from 
  const r={sku:'X',name:'商品',unit:'箱',orders:2,demand:10,stock:3,shortage:7,incoming:5,purchase_gap:2};
  const out=fulfillmentExport([r]);assert.equal(out.columns.length,9);assert.deepEqual(out.rows,[['X','商品','箱',2,10,3,7,5,2]]);assert.deepEqual(fulfillmentExport([]).rows,[]);
 });
+
+import {filterFulfillment} from './SalesPanel.js';
+test('shortage filter retains stock shortages even when incoming covers demand',()=>{const a={shortage:5,purchase_gap:0},b={shortage:0,purchase_gap:0};assert.deepEqual(filterFulfillment([a,b],true),[a]);assert.deepEqual(filterFulfillment([a,b]),[a,b]);assert.deepEqual(filterFulfillment([],true),[]);});
