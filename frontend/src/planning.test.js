@@ -124,3 +124,9 @@ test('pending item orders use identity and exclude shipped lines and closed orde
  assert.deepEqual(pendingItemOrders([o,{...o,status:'cancelled'},{...o,status:'fulfilled'},{...o,lines:[{item_id:'x',quantity:5,shipped:5}]},{...o,lines:[{item_id:'y',quantity:5,shipped:2}]}],'x'),[o]);
  assert.deepEqual(pendingItemOrders([],'x'),[]);
 });
+
+import {fulfillmentExport} from './SalesPanel.js';
+test('fulfillment export preserves units and distinguishes stock shortages from purchase gaps',()=>{
+ const r={sku:'X',name:'商品',unit:'箱',orders:2,demand:10,stock:3,shortage:7,incoming:5,purchase_gap:2};
+ const out=fulfillmentExport([r]);assert.equal(out.columns.length,9);assert.deepEqual(out.rows,[['X','商品','箱',2,10,3,7,5,2]]);assert.deepEqual(fulfillmentExport([]).rows,[]);
+});
