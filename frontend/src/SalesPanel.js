@@ -15,7 +15,7 @@ export function salesCustomerSummary(orders){
 export function pendingItemOrders(orders,itemId){
  return orders.filter(o=>['draft','partial'].includes(o.status)&&o.lines.some(l=>l.item_id===itemId&&l.shipped<l.quantity));
 }
-export function filterFulfillment(rows,onlyShortage=false){return rows.filter(r=>!onlyShortage||r.shortage>0);}
+export function filterFulfillment(rows,onlyShortage=false){return rows.filter(r=>!onlyShortage||r.shortage>0).sort((a,b)=>b.purchase_gap-a.purchase_gap||b.shortage-a.shortage||a.sku.localeCompare(b.sku));}
 export function fulfillmentExport(rows){return {columns:['SKU','商品','单位','关联订单','未发需求','现有库存','当前缺货','采购待到货','采购缺口'],rows:rows.map(r=>[r.sku,r.name,r.unit,r.orders,r.demand,r.stock,r.shortage,r.incoming,r.purchase_gap])};}
 export default {props:['active'],emits:['navigate'],setup(props,{emit}){
  const orders=ref([]),items=ref([]),shipments=ref([]),fulfillment=ref([]),batchDetail=ref(null),reference=ref(''),customer=ref(''),draftLines=ref([blank()]),due=ref(''),search=ref(''),status=ref('全部'),shipQty=ref({}),busy=ref(false),error=ref(''),notice=ref('');const tokens={};
