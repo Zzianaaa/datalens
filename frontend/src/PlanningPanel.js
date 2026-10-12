@@ -1,9 +1,9 @@
 import {ref,computed} from 'vue';
-import {calculatePlan} from './planning.js';
+import {calculatePlan,planInput} from './planning.js';
 import {resultCSV} from './export.js';
 export default {setup(){
  const price=ref(100),variableCost=ref(40),units=ref(100),fixedCost=ref(3000),saved=ref([]),notice=ref('');
- const plan=computed(()=>{try{return {value:calculatePlan({price:Number(price.value),variableCost:Number(variableCost.value),units:Number(units.value),fixedCost:Number(fixedCost.value)})};}catch(e){return {error:e.message};}});
+ const plan=computed(()=>{try{return {value:calculatePlan({price:planInput(price.value),variableCost:planInput(variableCost.value),units:planInput(units.value),fixedCost:planInput(fixedCost.value)})};}catch(e){return {error:e.message};}});
  const number=v=>v==null?'—':new Intl.NumberFormat('zh-CN',{maximumFractionDigits:2}).format(v);
  function save(){if(plan.value.error)return;saved.value=[{name:'方案 '+(saved.value.length+1),price:price.value,variableCost:variableCost.value,units:units.value,fixedCost:fixedCost.value,...plan.value.value},...saved.value].slice(0,10);notice.value='已加入本次方案对比，刷新页面后清空';}
  function exportCSV(){const rows=(saved.value.length?saved.value:[{name:'当前方案',price:price.value,variableCost:variableCost.value,units:units.value,fixedCost:fixedCost.value,...plan.value.value}]).map(r=>[r.name,r.price,r.variableCost,r.units,r.fixedCost,r.revenue,r.cost,r.profit,r.breakEven]);const url=URL.createObjectURL(new Blob([resultCSV({columns:['方案','单价','单位变动成本','销量','固定成本','收入','总成本','利润','盈亏平衡销量'],rows})],{type:'text/csv;charset=utf-8'}));const a=document.createElement('a');a.href=url;a.download='datalens-planning.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);}
