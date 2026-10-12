@@ -137,3 +137,9 @@ test('shortage filter retains stock shortages even when incoming covers demand',
 test('fulfillment prioritizes uncovered procurement gaps without mutating source',()=>{const a={sku:'A',shortage:8,purchase_gap:0},b={sku:'B',shortage:3,purchase_gap:3};const source=[a,b];assert.deepEqual(filterFulfillment(source),[b,a]);assert.deepEqual(source,[a,b]);});
 
 test('procurement gap filter separates uncovered demand from waiting receipts',()=>{const a={sku:'A',shortage:5,purchase_gap:0},b={sku:'B',shortage:5,purchase_gap:2};assert.deepEqual(filterFulfillment([a,b],false,true),[b]);assert.deepEqual(filterFulfillment([a,b],true,true),[b]);assert.deepEqual(filterFulfillment([a],false,true),[]);});
+
+test('fulfillment demand search trims and combines procurement filters',()=>{const a={sku:'ABC',name:'键盘',shortage:3,purchase_gap:1},b={sku:'XYZ',name:'鼠标',shortage:2,purchase_gap:0};assert.deepEqual(filterFulfillment([a,b],true,true,' abc '),[a]);assert.deepEqual(filterFulfillment([a,b],false,false,'鼠标'),[b]);assert.deepEqual(filterFulfillment([a,b],false,true,'鼠标'),[]);});
+
+test('filtered demand export includes only matching procurement gaps in display order',()=>{const a={sku:'A',name:'键盘',unit:'件',orders:2,demand:10,stock:1,shortage:9,incoming:9,purchase_gap:0},b={...a,sku:'B',incoming:2,purchase_gap:7},c={...a,sku:'C',purchase_gap:3};const original=[a,c,b];const out=fulfillmentExport(filterFulfillment(original,true,true,'键盘'));assert.deepEqual(out.rows.map(r=>r[0]),['B','C']);assert.deepEqual(out.rows.map(r=>r[8]),[7,3]);assert.deepEqual(original.map(r=>r.sku),['A','C','B']);});
+
+test('demand unit filter uses exact units and combines search and shortage',()=>{const a={sku:'A',name:'商品',unit:'件',shortage:2,purchase_gap:1},b={...a,sku:'B',unit:'箱'};assert.deepEqual(filterFulfillment([a,b],true,true,'商品','箱'),[b]);assert.deepEqual(filterFulfillment([a,b],false,false,'','包'),[]);});
