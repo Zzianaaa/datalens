@@ -92,3 +92,8 @@ def test_report_api_validation_and_recovery_after_rejected_save():
         key=response.json()['id']
         assert client.get('/api/library/reports/'+key).json()['result']==body['result']
         assert client.get('/api/library/reports/missing').status_code==404
+
+@pytest.mark.parametrize('field',['sql','mode','summary','queryTitle','reportLimit'])
+def test_report_metadata_rejects_nested_values(field):
+    with pytest.raises(ValueError):library.save_report('报告',None,'问题',{'columns':['a'],'rows':[[1]],field:{'nested':1}})
+    assert library.listing()['reports']==[]
