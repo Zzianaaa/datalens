@@ -153,3 +153,7 @@ test('purchase upcoming week crosses month boundary and excludes today and close
 
 import {receiptItemSummary} from './InventoryPanel.js';
 test('receipt summary nets partial orders by item identity and distinct suppliers',()=>{const a={item_id:'x',sku:'X',unit:'件',status:'open',ordered:5,received:2,supplier:'A'};const rows=receiptItemSummary([a,{...a,supplier:'B'},{...a,status:'cancelled'},{...a,received:5},{...a,item_id:'y',unit:'箱'}]);assert.equal(rows.length,2);assert.equal(rows[0].quantity,6);assert.equal(rows[0].suppliers,2);assert.equal(rows[1].quantity,3);assert.deepEqual(receiptItemSummary([]),[]);});
+
+import {planInput} from './planning.js';
+test('planning rejects missing inputs while allowing explicit zero',()=>{for(const v of ['', ' ',null,undefined])assert.throws(()=>planInput(v));assert.equal(planInput('0'),0);});
+test('planning rejects unrepresentable break-even ratios',()=>{assert.throws(()=>calculatePlan({price:1e-300,variableCost:0,units:1,fixedCost:1e300}));assert.throws(()=>calculatePlan({price:1,variableCost:0,units:1,fixedCost:1e308}));});
