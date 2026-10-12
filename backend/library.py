@@ -89,6 +89,9 @@ def save_report(title,project_id,question,result):
         raise ValueError('报告列名必须为非空文本')
     if any(cell is not None and type(cell) not in (str,int,float,bool) for row in result['rows'] for cell in row):
         raise ValueError('报告单元格必须为文本、数字、布尔或空值')
+    for field in ('sql','mode','summary','queryTitle','reportLimit'):
+        if field in result and result[field] is not None and not isinstance(result[field],str):
+            raise ValueError('报告说明字段必须为文本：'+field)
     payload=json.dumps({'question':question,'result':result},ensure_ascii=False,allow_nan=False)
     if len(payload.encode())>2*1024*1024: raise ValueError('报告不能超过 2 MB')
     with connect() as con:
