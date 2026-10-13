@@ -42,3 +42,20 @@ def test_concurrent_work_creation_respects_capacity(kind,limit):
         except ValueError:return False
     with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(save,range(2)))==[False,True]
     assert len(tasks.listing()['tasks' if kind=='task' else 'goals'])==limit
+
+@pytest.mark.parametrize('kind,limit',[('task',500),('goal',100)])
+def test_work_updates_at_capacity_preserve_creation_time(kind,limit):
+    from backend import tasks
+    with tasks.connect() as con:
+        tasks.initialize(con)
+        if kind=='task':con.executemany('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)',[(str(i),None,'任务','','','待处理','',123) for i in range(limit)])
+        else:con.executemany('INSERT INTO goals VALUES (?,?,?,?,?,?,?,?)',[(str(i),None,'目标','件',10,0,'',123) for i in range(limit)])
+    data={'title':'更新','owner':'负责人','due':'','status':'已完成','notes':'说明'} if kind=='task' else {'title':'更新','unit':'件','target':10,'current':5,'due':''}
+    save=tasks.save_task if kind=='task' else tasks.save_goal
+    with pytest.raises(ValueError):save(data)
+    save(data,'0')
+    rows=tasks.listing()['tasks' if kind=='task' else 'goals']
+    assert len(rows)==limit
+    row=next(r for r in rows if r['id']=='0')
+    assert row['title']=='更新' and row['created']==123
+    assert row['status']=='已完成' if kind=='task' else row['current']==5
