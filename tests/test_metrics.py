@@ -33,3 +33,19 @@ def test_archive_restore_and_existing_schema_migration():
     with TestClient(app) as c:
         assert c.put('/api/metrics/missing/archive',json={'archived':True}).status_code==404
         assert c.put('/api/metrics/old/archive',json={'archived':True}).status_code==200
+
+def test_concurrent_template_saves_respect_capacity():
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    with metrics.connect() as con:
+        metrics.initialize(con)
+        con.executemany('INSERT INTO metric_templates VALUES (?,?,?,?,?)',[(str(i),'模板','','SELECT * FROM data',0) for i in range(99)])
+    barrier=threading.Barrier(2)
+    def save(_):
+        barrier.wait()
+        try:metrics.save('并发','','SELECT COUNT(*) FROM data');return True
+        except ValueError:return False
+    with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(save,range(2)))==[False,True]
+    assert len(metrics.listing())==100
+    metrics.archive('0',True);metrics.archive('0',False)
+    assert next(r for r in metrics.listing() if r['id']=='0')['archived']==0
