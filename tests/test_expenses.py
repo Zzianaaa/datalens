@@ -58,3 +58,13 @@ def test_budget_api_validates_month_and_cents():
         for change in [{'month':'2026-13'},{'month':'2026-1'},{'amount':0},{'amount':1.2}]:
             assert c.post('/api/expense-budgets',json={**body,**change}).status_code==422
         assert c.post('/api/expense-budgets',json=body).status_code==200
+
+def test_budget_capacity_allows_update_but_rejects_new_pair():
+    with library.connect() as con:
+        expenses.initialize(con)
+        con.executemany('INSERT INTO expense_budgets VALUES (?,?,?,?)',[(f'{2000+i//12:04d}-{i%12+1:02d}','软件',100,0) for i in range(1200)])
+    with pytest.raises(ValueError):expenses.save_budget('2200-01','软件',200)
+    expenses.save_budget('2000-01','软件',2501)
+    rows=expenses.listing()['budgets']
+    assert len(rows)==1200
+    assert next(r for r in rows if r['month']=='2000-01')['amount']==2501
