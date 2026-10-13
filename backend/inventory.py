@@ -38,6 +38,7 @@ def listing():
 def create_item(sku,name,unit,reorder_level):
     with connect() as con:
         initialize(con)
+        con.execute('BEGIN IMMEDIATE')
         if con.execute('SELECT COUNT(*) FROM inventory_items').fetchone()[0]>=500:raise ValueError('最多 500 个商品')
         if con.execute('SELECT 1 FROM inventory_items WHERE sku=?',(sku,)).fetchone():raise ValueError('SKU 已存在')
         key=secrets.token_urlsafe(18)
