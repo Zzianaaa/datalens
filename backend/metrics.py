@@ -20,6 +20,7 @@ def save(name,description,sql):
     safe=validate_sql(sql)
     with connect() as con:
         initialize(con)
+        con.execute('BEGIN IMMEDIATE')
         if con.execute('SELECT COUNT(*) FROM metric_templates').fetchone()[0]>=100:raise ValueError('最多保存 100 个指标模板')
         key=secrets.token_urlsafe(18)
         con.execute('INSERT INTO metric_templates(id,name,description,sql) VALUES (?,?,?,?)',(key,name.strip(),description,safe))
