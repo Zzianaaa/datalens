@@ -22,7 +22,7 @@ def listing():
 
 def save_task(data,key=None):
     with connect() as con:
-        initialize(con);check_project(con,data.get('project_id'))
+        initialize(con);con.execute('BEGIN IMMEDIATE');check_project(con,data.get('project_id'))
         if key and not con.execute('SELECT 1 FROM tasks WHERE id=?',(key,)).fetchone():raise KeyError(key)
         if not key and con.execute('SELECT COUNT(*) FROM tasks').fetchone()[0]>=500:raise ValueError('最多 500 个任务')
         key=key or secrets.token_urlsafe(18)
@@ -33,7 +33,7 @@ def save_task(data,key=None):
 
 def save_goal(data,key=None):
     with connect() as con:
-        initialize(con);check_project(con,data.get('project_id'))
+        initialize(con);con.execute('BEGIN IMMEDIATE');check_project(con,data.get('project_id'))
         if key and not con.execute('SELECT 1 FROM goals WHERE id=?',(key,)).fetchone():raise KeyError(key)
         if not key and con.execute('SELECT COUNT(*) FROM goals').fetchone()[0]>=100:raise ValueError('最多 100 个目标')
         key=key or secrets.token_urlsafe(18)
