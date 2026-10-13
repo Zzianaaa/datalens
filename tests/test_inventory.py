@@ -99,3 +99,17 @@ def test_procurement_followup_reuses_open_task_and_preserves_snapshot():
     with TestClient(app) as client:
         assert client.post('/api/inventory/orders/'+order2+'/followup').status_code==200
     assert tasks.listing()['tasks'][0]['due']==''
+
+def test_concurrent_item_creation_respects_capacity():
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    with inventory.connect() as con:
+        inventory.initialize(con)
+        con.executemany('INSERT INTO inventory_items VALUES (?,?,?,?,?,?)',[(str(i),str(i),'商品','件',5,0) for i in range(499)])
+    barrier=threading.Barrier(2)
+    def save(i):
+        barrier.wait()
+        try:inventory.create_item('parallel'+str(i),'商品','件',5);return True
+        except ValueError:return False
+    with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(save,range(2)))==[False,True]
+    assert len(inventory.listing()['items'])==500
