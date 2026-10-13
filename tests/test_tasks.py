@@ -22,3 +22,23 @@ def test_goal_persists_progress():
         assert c.put('/api/work/goals/'+key,json={**data,'current':50000}).status_code==200
         assert c.get('/api/work').json()['goals'][0]['current']==50000
         assert c.post('/api/work/goals',json={**data,'target':0}).status_code==422
+
+@pytest.mark.parametrize('kind,limit',[('task',500),('goal',100)])
+def test_concurrent_work_creation_respects_capacity(kind,limit):
+    from backend import tasks
+    from concurrent.futures import ThreadPoolExecutor
+    import threading
+    with tasks.connect() as con:
+        tasks.initialize(con)
+        if kind=='task':con.executemany('INSERT INTO tasks VALUES (?,?,?,?,?,?,?,?)',[(str(i),None,'任务','','','待处理','',0) for i in range(limit-1)])
+        else:con.executemany('INSERT INTO goals VALUES (?,?,?,?,?,?,?,?)',[(str(i),None,'目标','件',1,0,'',0) for i in range(limit-1)])
+    barrier=threading.Barrier(2)
+    def save(_):
+        barrier.wait()
+        try:
+            if kind=='task':tasks.save_task({'title':'并发','owner':'','due':'','status':'待处理','notes':''})
+            else:tasks.save_goal({'title':'并发','unit':'件','target':1,'current':0,'due':''})
+            return True
+        except ValueError:return False
+    with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(save,range(2)))==[False,True]
+    assert len(tasks.listing()['tasks' if kind=='task' else 'goals'])==limit
