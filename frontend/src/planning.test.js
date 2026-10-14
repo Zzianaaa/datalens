@@ -159,3 +159,6 @@ test('planning rejects missing inputs while allowing explicit zero',()=>{for(con
 test('planning rejects unrepresentable break-even ratios',()=>{assert.throws(()=>calculatePlan({price:1e-300,variableCost:0,units:1,fixedCost:1e300}));assert.throws(()=>calculatePlan({price:1,variableCost:0,units:1,fixedCost:1e308}));});
 
 test('planning refuses unsafe integer volumes that cannot preserve quantity precision',()=>{assert.throws(()=>calculatePlan({price:0,variableCost:0,units:Number.MAX_SAFE_INTEGER+1,fixedCost:0}));assert.equal(calculatePlan({price:0,variableCost:0,units:Number.MAX_SAFE_INTEGER,fixedCost:0}).revenue,0);});
+
+import {goalProgress} from './WorkPanel.js';
+test('goal progress handles finite ratios and overflow without Infinity display',()=>{assert.equal(goalProgress({current:5,target:10}),50);assert.equal(goalProgress({current:12,target:10}),120);assert.equal(goalProgress({current:0,target:1}),0);assert.equal(goalProgress({current:1e308,target:1e-6}),null);});
