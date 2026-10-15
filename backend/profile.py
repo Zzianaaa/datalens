@@ -18,8 +18,11 @@ def profile_dataset(ds):
         if kind == 'DOUBLE':
             finite = [v for v in values if math.isfinite(v)]
             item['non_finite'] = len(values) - len(finite)
+            ordered = sorted(finite)
+            middle = len(ordered) // 2
+            median = statistics.mean(ordered[middle-1:middle+1]) if ordered and len(ordered) % 2 == 0 else ordered[middle] if ordered else None
             item['numeric'] = {'min': min(finite), 'max': max(finite),
-                               'mean': statistics.fmean(finite), 'median': statistics.median(finite)} if finite else None
+                               'mean': statistics.mean(finite), 'median': median} if finite else None
         columns.append(item)
     return {'row_count': len(rows), 'duplicate_rows': len(rows) - len(set(map(tuple, rows))),
             'missing_cells': sum(c['missing'] for c in columns), 'columns': columns}
