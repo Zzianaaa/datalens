@@ -23,3 +23,13 @@ def test_profile_endpoint():
         assert r.json()['duplicate_rows'] == 1
         assert c.get('/api/datasets/missing/profile').status_code == 404
     DATA.clear()
+
+
+def test_large_finite_numbers_keep_mean_and_median_serializable():
+    import json
+    for values, expected in [([1e308, 1e308], 1e308), ([-1e308, -1e308], -1e308), ([-1e308, 1e308], 0.0)]:
+        result = profile_dataset({'names':['amount'], 'types':['DOUBLE'], 'rows':[[v] for v in values]})
+        numeric = result['columns'][0]['numeric']
+        assert numeric['mean'] == expected
+        assert numeric['median'] == expected
+        json.dumps(result, allow_nan=False)
