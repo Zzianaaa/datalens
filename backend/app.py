@@ -208,11 +208,11 @@ class ItemRequest(BaseModel):
     sku: str = Field(min_length=1,max_length=80,pattern=r'\S')
     name: str = Field(min_length=1,max_length=120,pattern=r'\S')
     unit: str = Field(default='件',max_length=20)
-    reorder_level: int = Field(default=5,ge=0,le=1000000000)
+    reorder_level: int = Field(default=5,strict=True,ge=0,le=1000000000)
 
 class MovementRequest(BaseModel):
     item_id: str
-    delta: int = Field(ge=-1000000,le=1000000)
+    delta: int = Field(strict=True,ge=-1000000,le=1000000)
     reason: str = Field(min_length=1,max_length=300,pattern=r'\S')
 
     @field_validator('delta')
@@ -238,7 +238,7 @@ def stock_movement(body: MovementRequest):
 class PurchaseRequest(BaseModel):
     item_id: str
     supplier: str = Field(min_length=1,max_length=120,pattern=r'\S')
-    quantity: int = Field(ge=1,le=1000000)
+    quantity: int = Field(strict=True,ge=1,le=1000000)
     due: str = ''
     unit_cost: int = Field(default=0,strict=True,ge=0,le=100000000000)
     payment_due: str = ''
@@ -251,7 +251,7 @@ class PurchaseRequest(BaseModel):
         return value
 
 class ReceiptRequest(BaseModel):
-    quantity: int = Field(ge=1,le=1000000)
+    quantity: int = Field(strict=True,ge=1,le=1000000)
     receipt_id: str = Field(min_length=8,max_length=100)
 
 @app.post('/api/inventory/orders')
