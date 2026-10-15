@@ -113,3 +113,20 @@ def test_concurrent_item_creation_respects_capacity():
         except ValueError:return False
     with ThreadPoolExecutor(max_workers=2) as pool:assert sorted(pool.map(save,range(2)))==[False,True]
     assert len(inventory.listing()['items'])==500
+
+
+def test_inventory_request_numbers_reject_boolean_and_coerced_values():
+    import pytest
+    from pydantic import ValidationError
+    from backend.app import ItemRequest, MovementRequest, PurchaseRequest, ReceiptRequest
+    cases = [
+        (ItemRequest, dict(sku='qa',name='商品'), 'reorder_level'),
+        (MovementRequest, dict(item_id='qa',reason='验收'), 'delta'),
+        (PurchaseRequest, dict(item_id='qa',supplier='供应商'), 'quantity'),
+        (ReceiptRequest, dict(receipt_id='qa-receipt'), 'quantity'),
+    ]
+    for model, base, field in cases:
+        for value in (True, False, '1', 1.0):
+            with pytest.raises(ValidationError):
+                model(**base, **{field:value})
+        assert getattr(model(**base, **{field:1}),field)==1
