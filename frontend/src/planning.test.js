@@ -162,3 +162,8 @@ test('planning refuses unsafe integer volumes that cannot preserve quantity prec
 
 import {goalProgress} from './WorkPanel.js';
 test('goal progress handles finite ratios and overflow without Infinity display',()=>{assert.equal(goalProgress({current:5,target:10}),50);assert.equal(goalProgress({current:12,target:10}),120);assert.equal(goalProgress({current:0,target:1}),0);assert.equal(goalProgress({current:1e308,target:1e-6}),null);});
+
+test('break-even agrees with zero profit at decimal boundaries without rounding down true gaps',()=>{
+ assert.equal(calculatePlan({price:0.01,variableCost:0,units:7,fixedCost:0.07}).breakEven,7);
+ assert.equal(calculatePlan({price:0.01,variableCost:0,units:7,fixedCost:0.0700001}).breakEven,8);
+});
