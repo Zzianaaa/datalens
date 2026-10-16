@@ -10,7 +10,7 @@ export default {props:['active'],emits:['navigate'],setup(props,{emit}){
  const unpaid=computed(()=>invoices.value.reduce((s,i)=>s+i.amount-i.paid,0)),late=computed(()=>invoices.value.filter(overdue).reduce((s,i)=>s+i.amount-i.paid,0));
  function age(i){if(i.paid===i.amount)return '已结清';if(!overdue(i))return '未逾期';const days=Math.round((Date.parse(today.value+'T00:00:00Z')-Date.parse(i.due+'T00:00:00Z'))/86400000);return days<=30?'逾期 1–30 天':days<=60?'逾期 31–60 天':days<=90?'逾期 61–90 天':'逾期 90 天以上';}
  async function api(path='',body){const r=await fetch('/api/receivables'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'输入格式无效');return d;}
- async function refresh(){try{const d=new Date();today.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const data=await api();invoices.value=data.invoices;receipts.value=data.receipts;}catch(e){error.value=e.message;}}
+ async function refresh(){error.value='';try{const d=new Date();today.value=`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;const data=await api();invoices.value=data.invoices;receipts.value=data.receipts;}catch(e){error.value=e.message;}}
  async function run(fn){busy.value=true;error.value='';try{await fn();await refresh();}catch(e){error.value=e.message;}finally{busy.value=false;}}
  function create(){run(async()=>{const d=await api('',{reference:reference.value,customer:customer.value,amount:cents(amount.value),due:due.value});key.value=d.id;reference.value='';notice.value='应收款已记录';});}
  watch([key,payment,note],()=>token='');
