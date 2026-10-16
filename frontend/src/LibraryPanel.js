@@ -3,7 +3,7 @@ import {htmlReport} from './report.js';
 export default {props:['dataset','result','question'],emits:['open'],setup(props,{emit}){
  const reportTitle=ref(''),reports=ref([]),projects=ref([]),assets=ref([]),name=ref(''),description=ref(''),snapshotName=ref(''),projectId=ref(''),filter=ref(''),showArchived=ref(false),busy=ref(false),error=ref(''),notice=ref('');
  async function api(path,options={}){const r=await fetch('/api/library'+path,options);const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'输入格式无效');return d;}
- async function refresh(){try{const d=await api('');projects.value=d.projects;assets.value=d.assets;reports.value=d.reports;}catch(e){error.value=e.message;}}
+ async function refresh(){error.value='';try{const d=await api('');projects.value=d.projects;assets.value=d.assets;reports.value=d.reports;}catch(e){error.value=e.message;}}
  async function run(fn){busy.value=true;error.value='';try{await fn();await refresh();}catch(e){error.value=e.message;}finally{busy.value=false;}}
  const post=(path,body)=>api(path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
  function create(){run(async()=>{await post('/projects',{name:name.value,description:description.value});name.value='';description.value='';notice.value='项目已创建';});}
