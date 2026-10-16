@@ -78,7 +78,7 @@ export default {props:['active'],setup(props){
  const low=computed(()=>items.value.filter(i=>i.quantity<=i.reorder_level));
  const visible=computed(()=>items.value.filter(i=>(!onlyLow.value||i.quantity<=i.reorder_level)&&`${i.sku} ${i.name}`.toLowerCase().includes(search.value.toLowerCase())));
  async function api(path='',body){const r=await fetch('/api/inventory'+path,body?{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}:{});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'输入格式无效，请检查数量');return d;}
- async function refresh(){try{const d=await api();reconciliation.value=d.reconciliation;orders.value=d.orders;items.value=d.items;movements.value=d.movements;}catch(e){error.value=e.message;}}
+ async function refresh(){error.value='';try{const d=await api();reconciliation.value=d.reconciliation;orders.value=d.orders;items.value=d.items;movements.value=d.movements;}catch(e){error.value=e.message;}}
  async function run(fn){busy.value=true;error.value='';try{await fn();await refresh();}catch(e){error.value=e.message;}finally{busy.value=false;}}
  function create(){run(async()=>{const d=await api('/items',{sku:sku.value,name:name.value,unit:unit.value,reorder_level:Number(reorderLevel.value)});itemId.value=d.id;sku.value='';name.value='';notice.value='商品已创建，初始库存为 0；请记录入库';});}
  function move(){run(async()=>{if(!Number.isInteger(Number(quantity.value))||Number(quantity.value)<=0)throw Error('数量必须是正整数');await api('/movements',{item_id:itemId.value,delta:Number(quantity.value)*(direction.value==='in'?1:-1),reason:reason.value});reason.value='';notice.value='库存流水已登记';});}
