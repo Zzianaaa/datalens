@@ -2,7 +2,7 @@ import {ref,computed,watch} from 'vue';
 export default {props:['active','dataset','sql'],emits:['apply'],setup(props,{emit}){
  const showArchived=ref(false),templates=ref([]),name=ref(''),description=ref(''),draft=ref('SELECT COUNT(*) AS 记录数 FROM data'),search=ref(''),error=ref(''),notice=ref(''),busy=ref(false);
  const visible=computed(()=>templates.value.filter(t=>(showArchived.value||!t.archived)&&(t.name+' '+t.description).toLowerCase().includes(search.value.toLowerCase())));
- async function refresh(){try{const r=await fetch('/api/metrics');if(!r.ok)throw Error('模板读取失败');templates.value=(await r.json()).templates;}catch(e){error.value=e.message;}}
+ async function refresh(){error.value='';try{const r=await fetch('/api/metrics');if(!r.ok)throw Error('模板读取失败');templates.value=(await r.json()).templates;}catch(e){error.value=e.message;}}
  watch(()=>props.active,v=>{if(v)refresh();},{immediate:true});
  async function save(){busy.value=true;error.value='';try{const r=await fetch('/api/metrics',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:name.value,description:description.value,sql:draft.value})});const d=await r.json();if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'请检查名称和 SQL');await refresh();notice.value='模板已保存到本地，可切换数据后复用';name.value='';}catch(e){error.value=e.message;}finally{busy.value=false;}}
  async function archive(t){busy.value=true;error.value='';try{const r=await fetch('/api/metrics/'+t.id+'/archive',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({archived:!t.archived})});if(!r.ok)throw Error('模板状态更新失败');await refresh();notice.value=t.archived?'模板已恢复':'模板已归档，定义保留';}catch(e){error.value=e.message;}finally{busy.value=false;}}
