@@ -35,3 +35,16 @@ test('a failed mutation clears a prior success notice',async()=>{
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('failed metric save and archive clear previous success notices',async()=>{
+ const original=globalThis.fetch;
+ try{
+  globalThis.fetch=async()=>({ok:false,json:async()=>({detail:'请求失败'})});
+  const state=Metrics.setup({active:false},{emit(){}});
+  state.notice.value='之前保存成功';await state.save();
+  assert.equal(state.notice.value,'');assert.ok(state.error.value);assert.equal(state.busy.value,false);
+  state.notice.value='之前归档成功';await state.archive({id:'qa',archived:false});
+  assert.equal(state.notice.value,'');assert.ok(state.error.value);assert.equal(state.busy.value,false);
+ }finally{globalThis.fetch=original;}
+});
