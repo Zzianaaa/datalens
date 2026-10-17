@@ -24,7 +24,7 @@ export default {props:['active'],setup(props){
  const statuses=['待处理','进行中','已完成','已归档'];
  async function api(path,options={}){const res=await fetch(path,options);const d=await res.json();if(!res.ok)throw Error(typeof d.detail==='string'?d.detail:'输入格式无效，请检查日期和数值');return d;}
  async function refresh(){error.value='';try{const [w,l]=await Promise.all([api('/api/work'),api('/api/library')]);tasks.value=w.tasks;goals.value=w.goals;projects.value=l.projects;}catch(e){error.value=e.message;}}
- async function run(fn){busy.value=true;error.value='';try{await fn();await refresh();}catch(e){error.value=e.message;}finally{busy.value=false;}}
+ async function run(fn){busy.value=true;error.value='';notice.value='';try{await fn();await refresh();}catch(e){error.value=e.message;}finally{busy.value=false;}}
  function saveTask(){run(async()=>{await api('/api/work/tasks'+(editTask.value?'/'+editTask.value:''),{method:editTask.value?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...task.value,project_id:task.value.project_id||null})});task.value=blankTask();editTask.value=null;notice.value='任务已保存';});}
  function saveGoal(){run(async()=>{await api('/api/work/goals'+(editGoal.value?'/'+editGoal.value:''),{method:editGoal.value?'PUT':'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({...goal.value,project_id:goal.value.project_id||null,target:Number(goal.value.target),current:Number(goal.value.current)})});goal.value=blankGoal();editGoal.value=null;notice.value='目标已保存';});}
  function stage(t,status){run(()=>api('/api/work/tasks/'+t.id,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({...t,status})}));}
