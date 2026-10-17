@@ -18,3 +18,20 @@ test('panel refreshes recover from a failed read without stale errors',async()=>
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('a failed mutation clears a prior success notice',async()=>{
+ const original=globalThis.fetch;
+ try{
+  globalThis.fetch=async()=>{throw Error('保存失败');};
+  for(const [panel,props,action] of [[Library,{},'create'],[Work,{active:false},'saveTask'],[Inventory,{active:false},'create'],[Receivables,{active:false},'create']]){
+   const state=panel.setup(props,{emit(){}});
+   state.notice.value='之前操作成功';
+   state[action]();
+   await new Promise(resolve=>setImmediate(resolve));
+   assert.equal(state.notice.value,'');
+   assert.ok(state.error.value);
+   assert.equal(state.busy.value,false);
+  }
+ }finally{globalThis.fetch=original;}
+});
