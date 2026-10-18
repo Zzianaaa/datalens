@@ -84,3 +84,19 @@ test('operations clear old success notices on dataset changes and failed request
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('clean success survives parent dataset update but not an unrelated switch',async()=>{
+ const original=globalThis.fetch;
+ try{
+  for(const unrelated of [false,true]){
+   const props=reactive({dataset:{id:'old',columns:[]}});
+   const state=Operations.setup(props,{emit:(event,data)=>{props.dataset=unrelated?{id:'other',columns:[]}:data;}});
+   globalThis.fetch=async()=>({ok:true,json:async()=>({dataset:{id:'cleaned',columns:[]}})});
+   await state.clean(false);
+   assert.equal(state.error.value,'');assert.equal(state.busy.value,false);
+   if(unrelated)assert.equal(state.notice.value,'');
+   else{assert.match(state.notice.value,/已生成清洗副本/);props.dataset={id:'next',columns:[]};await nextTick();assert.equal(state.notice.value,'');}
+  }
+ }finally{globalThis.fetch=original;}
+});
