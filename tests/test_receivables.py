@@ -65,3 +65,22 @@ def test_collection_task_link_and_duplicate_prevention():
     assert receivables.followup('客户','','2026-10-12')['id']!=first['id']
     receivables.receive(key,10000,'结清','receipt-1')
     with pytest.raises(ValueError):receivables.followup('客户','','2026-10-12')
+
+
+@pytest.mark.parametrize('amount',[True,False,'123',123.0,1.5])
+def test_receivable_and_receipt_money_requires_integer_json_without_side_effects(amount):
+    with TestClient(app) as c:
+        rejected=c.post('/api/receivables',json={'reference':'STRICT','customer':'虚构客户','amount':amount,'due':'2026-10-18'})
+        assert rejected.status_code==422
+        assert receivables.listing()['invoices']==[]
+        invoice=c.post('/api/receivables',json={'reference':'STRICT','customer':'虚构客户','amount':123,'due':'2026-10-18'})
+        assert invoice.status_code==200
+        key=invoice.json()['id']
+        rejected=c.post('/api/receivables/'+key+'/receive',json={'amount':amount,'note':'隔离验收','receipt_id':'strict-money-receipt'})
+        assert rejected.status_code==422
+        data=receivables.listing()
+        assert data['invoices'][0]['paid']==0 and data['receipts']==[]
+        accepted=c.post('/api/receivables/'+key+'/receive',json={'amount':123,'note':'隔离验收','receipt_id':'strict-money-receipt'})
+        assert accepted.status_code==200
+        data=receivables.listing()
+        assert data['invoices'][0]['paid']==123 and len(data['receipts'])==1
