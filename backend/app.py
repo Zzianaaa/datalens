@@ -311,7 +311,7 @@ def metric_archive(key: str,body: MetricArchiveRequest):
 class ReceivableRequest(BaseModel):
     reference: str = Field(min_length=1,max_length=80,pattern=r'\S')
     customer: str = Field(min_length=1,max_length=120,pattern=r'\S')
-    amount: int = Field(ge=1,le=100000000000)
+    amount: int = Field(strict=True,ge=1,le=100000000000)
     due: str
 
     @field_validator('due')
@@ -322,7 +322,7 @@ class ReceivableRequest(BaseModel):
         return value
 
 class CashReceiptRequest(BaseModel):
-    amount: int = Field(ge=1,le=100000000000)
+    amount: int = Field(strict=True,ge=1,le=100000000000)
     note: str = Field(min_length=1,max_length=300,pattern=r'\S')
     receipt_id: str = Field(min_length=8,max_length=100)
 
