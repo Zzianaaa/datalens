@@ -66,3 +66,21 @@ test('old dataset request errors do not appear on a newly selected dataset',asyn
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('operations clear old success notices on dataset changes and failed requests',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const props=reactive({dataset:{id:'old',columns:[]}});
+  const state=Operations.setup(props,{emit(){}});
+  state.notice.value='之前清洗成功';
+  props.dataset={id:'new',columns:[]};await nextTick();
+  assert.equal(state.notice.value,'');
+  globalThis.fetch=async()=>{throw Error('当前操作失败');};
+  for(const action of ['calculate','clean']){
+   state.notice.value='之前操作成功';await state[action](true);
+   assert.equal(state.notice.value,'');assert.equal(state.error.value,'当前操作失败');
+   assert.equal(state.busy.value,false);
+  }
+ }finally{globalThis.fetch=original;}
+});
