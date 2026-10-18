@@ -5,6 +5,8 @@ import Metrics from './MetricsPanel.js';
 import Work from './WorkPanel.js';
 import Inventory from './InventoryPanel.js';
 import Receivables from './ReceivablesPanel.js';
+import Operations from './OperationsPanel.js';
+import {reactive,nextTick} from 'vue';
 
 test('panel refreshes recover from a failed read without stale errors',async()=>{
  const original=globalThis.fetch;
@@ -46,5 +48,21 @@ test('failed metric save and archive clear previous success notices',async()=>{
   assert.equal(state.notice.value,'');assert.ok(state.error.value);assert.equal(state.busy.value,false);
   state.notice.value='之前归档成功';await state.archive({id:'qa',archived:false});
   assert.equal(state.notice.value,'');assert.ok(state.error.value);assert.equal(state.busy.value,false);
+ }finally{globalThis.fetch=original;}
+});
+
+
+test('old dataset request errors do not appear on a newly selected dataset',async()=>{
+ const original=globalThis.fetch;
+ try{
+  for(const action of ['calculate','clean']){
+   const props=reactive({dataset:{id:'old',columns:[]}});
+   const state=Operations.setup(props,{emit(){}});
+   let rejectRequest;globalThis.fetch=()=>new Promise((resolve,reject)=>{rejectRequest=reject;});
+   const pending=state[action](true);
+   props.dataset={id:'new',columns:[]};await nextTick();
+   rejectRequest(Error('旧数据请求失败'));await pending;
+   assert.equal(state.error.value,'');assert.equal(state.busy.value,false);
+  }
  }finally{globalThis.fetch=original;}
 });
