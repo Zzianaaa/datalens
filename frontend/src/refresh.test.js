@@ -190,3 +190,22 @@ test('budget form rejects ceiling overflow without changing entered budget',asyn
   state.budgetAmount.value='1000000000.00';await save();assert.equal(requests.length,1);assert.equal(requests[0].amount,100000000000);assert.equal(state.error.value,'');assert.equal(state.busy.value,false);
  }finally{globalThis.fetch=original;}
 });
+
+
+test('quality inspection ignores old datasets and earlier requests',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('./main.js',import.meta.url),'utf8');
+ const inspectSource=source.split('\n').find(line=>line.trim().startsWith('async function inspect()'));
+ for(const outcome of ['resolve','reject']){
+  const dataset={value:{id:'old'}},profile={value:null},showProfile={value:false},error={value:''};
+  const pending=[];const api=()=>new Promise((resolve,reject)=>pending.push({resolve,reject}));
+  const inspect=new Function('dataset','profile','showProfile','error','api','let profileRequest=0;'+inspectSource+';return inspect;')(dataset,profile,showProfile,error,api);
+  const old=inspect();dataset.value={id:'new'};showProfile.value=false;
+  if(outcome==='resolve')pending[0].resolve({row_count:999});else pending[0].reject(Error('旧错误'));
+  await old;assert.equal(profile.value,null);assert.equal(error.value,'');
+  const earlier=inspect();await inspect();const latest=inspect();
+  pending[2].resolve({row_count:2});await latest;
+  pending[1].resolve({row_count:1});await earlier;
+  assert.equal(profile.value.row_count,2);assert.equal(showProfile.value,true);
+ }
+});
