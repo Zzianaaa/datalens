@@ -160,3 +160,21 @@ test('arrival and shipment retry identities follow quantities',async()=>{
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('expense and payable forms enforce the API money ceiling before sending',async()=>{
+ const original=globalThis.fetch;
+ try{
+  for(const panel of [Expenses,Payables]){
+   const requests=[];globalThis.fetch=async(path,options)=>{if(options?.body)requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({expenses:[],budgets:[],categories:[],projects:[],bills:[],payments:[]})};};
+   const state=panel.setup({active:false},{emit(){}});
+   if(panel===Payables)state.billId.value='qa';
+   const submit=async()=>{state[panel===Expenses?'create':'pay']();await new Promise(resolve=>setImmediate(resolve));};
+   state.amount.value='1000000000.01';await submit();
+   assert.equal(requests.length,0);assert.match(state.error.value,/不能超过/);assert.equal(state.busy.value,false);
+   assert.equal(state.amount.value,'1000000000.01');
+   state.amount.value='1000000000.00';await submit();
+   assert.equal(requests.length,1);assert.equal(requests[0].amount,100000000000);assert.equal(state.error.value,'');
+  }
+ }finally{globalThis.fetch=original;}
+});
