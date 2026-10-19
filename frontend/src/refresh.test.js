@@ -7,6 +7,7 @@ import Inventory from './InventoryPanel.js';
 import Receivables from './ReceivablesPanel.js';
 import Operations from './OperationsPanel.js';
 import Payables from './PayablesPanel.js';
+import Expenses from './ExpensesPanel.js';
 import {reactive,nextTick} from 'vue';
 
 test('panel refreshes recover from a failed read without stale errors',async()=>{
@@ -118,5 +119,22 @@ test('payment retries retain token until payment details change',async()=>{
   }
   assert.equal(requests.at(-1).amount,124);assert.equal(state.busy.value,false);
   assert.equal(state.amount.value,'1.24');assert.equal(state.note.value,'新说明');
+ }finally{globalThis.fetch=original;}
+});
+
+
+test('expense retry identity follows all saved expense fields',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const requests=[];globalThis.fetch=async(path,options)=>{requests.push(JSON.parse(options.body));throw Error('响应丢失');};
+  const state=Expenses.setup({active:false});
+  state.reference.value='QA';state.amount.value='1.23';state.occurred.value='2026-10-19';
+  const save=async()=>{state.create();await new Promise(resolve=>setImmediate(resolve));};
+  await save();await save();assert.equal(requests[0].expense_id,requests[1].expense_id);
+  for(const [field,value] of [['reference','QA-2'],['category','软件'],['amount','1.24'],['occurred','2026-10-20'],['counterparty','虚构商户'],['projectId','qa-project'],['note','新说明']]){
+   const previous=requests.at(-1).expense_id;state[field].value=value;await save();
+   assert.notEqual(requests.at(-1).expense_id,previous,field);
+  }
+  assert.equal(requests.at(-1).amount,124);assert.equal(state.busy.value,false);
  }finally{globalThis.fetch=original;}
 });
