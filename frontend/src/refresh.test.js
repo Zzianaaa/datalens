@@ -209,3 +209,15 @@ test('quality inspection ignores old datasets and earlier requests',async()=>{
   assert.equal(profile.value.row_count,2);assert.equal(showProfile.value,true);
  }
 });
+
+
+test('quality retry clears the earlier request error',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('./main.js',import.meta.url),'utf8');
+ const method=source.split('\n').find(line=>line.trim().startsWith('async function inspect()'));
+ const dataset={value:{id:'qa'}},profile={value:null},showProfile={value:false},error={value:''};let failed=true;
+ const api=async()=>{if(failed)throw Error('临时失败');return {row_count:2};};
+ const inspect=new Function('dataset','profile','showProfile','error','api','let profileRequest=0;'+method+';return inspect;')(dataset,profile,showProfile,error,api);
+ await inspect();assert.equal(error.value,'临时失败');assert.equal(showProfile.value,false);
+ failed=false;await inspect();assert.equal(error.value,'');assert.equal(profile.value.row_count,2);assert.equal(showProfile.value,true);
+});
