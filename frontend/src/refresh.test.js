@@ -178,3 +178,15 @@ test('expense and payable forms enforce the API money ceiling before sending',as
   }
  }finally{globalThis.fetch=original;}
 });
+
+
+test('budget form rejects ceiling overflow without changing entered budget',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const requests=[];globalThis.fetch=async(path,options)=>{if(options?.body)requests.push(JSON.parse(options.body));return {ok:true,json:async()=>({expenses:[],budgets:[],categories:[],projects:[]})};};
+  const state=Expenses.setup({active:false});state.budgetMonth.value='2026-10';state.budgetCategory.value='软件';
+  const save=async()=>{state.saveBudget();await new Promise(resolve=>setImmediate(resolve));};
+  state.budgetAmount.value='1000000000.01';await save();assert.equal(requests.length,0);assert.match(state.error.value,/不能超过/);assert.equal(state.budgetAmount.value,'1000000000.01');
+  state.budgetAmount.value='1000000000.00';await save();assert.equal(requests.length,1);assert.equal(requests[0].amount,100000000000);assert.equal(state.error.value,'');assert.equal(state.busy.value,false);
+ }finally{globalThis.fetch=original;}
+});
