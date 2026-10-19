@@ -221,3 +221,16 @@ test('quality retry clears the earlier request error',async()=>{
  await inspect();assert.equal(error.value,'临时失败');assert.equal(showProfile.value,false);
  failed=false;await inspect();assert.equal(error.value,'');assert.equal(profile.value.row_count,2);assert.equal(showProfile.value,true);
 });
+
+
+test('data browser retries clear errors and old dataset failures stay isolated',async()=>{
+ const {readFile}=await import('node:fs/promises');
+ const source=await readFile(new URL('./main.js',import.meta.url),'utf8');
+ const method=source.split('\n').find(line=>line.trim().startsWith('async function browse('));
+ const dataset={value:{id:'old'}},browseBusy={value:false},browserRows={value:null},error={value:''};let mode='fail',rejectOld;
+ const api=async()=>{if(mode==='fail')throw Error('读取暂不可用');if(mode==='wait')return new Promise((resolve,reject)=>rejectOld=reject);return {rows:[[2]],total:1};};
+ const browse=new Function('dataset','browseBusy','browserRows','error','search','descending','sortField','api','let browseRequest=0;'+method+';return browse;')(dataset,browseBusy,browserRows,error,{value:''},{value:false},{value:''},api);
+ await browse();assert.equal(error.value,'读取暂不可用');
+ mode='ok';await browse();assert.equal(error.value,'');assert.equal(browserRows.value.total,1);
+ mode='wait';const pending=browse();dataset.value={id:'new'};rejectOld(Error('旧请求失败'));await pending;assert.equal(error.value,'');assert.equal(browseBusy.value,false);
+});
