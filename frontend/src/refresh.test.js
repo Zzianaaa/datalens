@@ -8,6 +8,7 @@ import Receivables from './ReceivablesPanel.js';
 import Operations from './OperationsPanel.js';
 import Payables from './PayablesPanel.js';
 import Expenses from './ExpensesPanel.js';
+import Sales from './SalesPanel.js';
 import {reactive,nextTick} from 'vue';
 
 test('panel refreshes recover from a failed read without stale errors',async()=>{
@@ -136,5 +137,26 @@ test('expense retry identity follows all saved expense fields',async()=>{
    assert.notEqual(requests.at(-1).expense_id,previous,field);
   }
   assert.equal(requests.at(-1).amount,124);assert.equal(state.busy.value,false);
+ }finally{globalThis.fetch=original;}
+});
+
+
+test('arrival and shipment retry identities follow quantities',async()=>{
+ const original=globalThis.fetch;
+ try{
+  for(const kind of ['arrival','shipment']){
+   const requests=[];globalThis.fetch=async(path,options)=>{requests.push(JSON.parse(options.body));throw Error('响应丢失');};
+   const state=(kind==='arrival'?Inventory:Sales).setup({active:false},{emit(){}});
+   const order={id:'qa-order',lines:[{id:'line-1'},{id:'line-2'}]};
+   const set=n=>{if(kind==='arrival')state.receiptQty.value[order.id]=String(n);else state.shipQty.value['line-1']=String(n);};
+   const submit=async()=>{state[kind==='arrival'?'receive':'ship'](order);await new Promise(resolve=>setImmediate(resolve));};
+   set(1);await submit();await submit();
+   const field=kind==='arrival'?'receipt_id':'shipment_id';
+   assert.equal(requests[0][field],requests[1][field]);
+   set(2);await submit();assert.notEqual(requests[2][field],requests[1][field],kind);
+   await submit();assert.equal(requests[3][field],requests[2][field]);
+   if(kind==='shipment'){state.shipQty.value['line-2']='1';await submit();assert.notEqual(requests[4][field],requests[3][field]);}
+   assert.equal(state.busy.value,false);
+  }
  }finally{globalThis.fetch=original;}
 });
