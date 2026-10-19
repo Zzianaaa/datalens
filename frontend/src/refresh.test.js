@@ -6,6 +6,7 @@ import Work from './WorkPanel.js';
 import Inventory from './InventoryPanel.js';
 import Receivables from './ReceivablesPanel.js';
 import Operations from './OperationsPanel.js';
+import Payables from './PayablesPanel.js';
 import {reactive,nextTick} from 'vue';
 
 test('panel refreshes recover from a failed read without stale errors',async()=>{
@@ -98,5 +99,24 @@ test('clean success survives parent dataset update but not an unrelated switch',
    if(unrelated)assert.equal(state.notice.value,'');
    else{assert.match(state.notice.value,/已生成清洗副本/);props.dataset={id:'next',columns:[]};await nextTick();assert.equal(state.notice.value,'');}
   }
+ }finally{globalThis.fetch=original;}
+});
+
+
+test('payment retries retain token until payment details change',async()=>{
+ const original=globalThis.fetch;
+ try{
+  const requests=[];
+  globalThis.fetch=async(path,options)=>{requests.push(JSON.parse(options.body));throw Error('响应丢失');};
+  const state=Payables.setup({active:false},{emit(){}});
+  state.billId.value='bill-1';state.amount.value='1.23';state.note.value='说明';
+  const pay=async()=>{state.pay();await new Promise(resolve=>setImmediate(resolve));};
+  await pay();await pay();assert.equal(requests[0].payment_id,requests[1].payment_id);
+  for(const [field,value] of [['amount','1.24'],['note','新说明'],['billId','bill-2']]){
+   const previous=requests.at(-1).payment_id;state[field].value=value;await pay();
+   assert.notEqual(requests.at(-1).payment_id,previous);
+  }
+  assert.equal(requests.at(-1).amount,124);assert.equal(state.busy.value,false);
+  assert.equal(state.amount.value,'1.24');assert.equal(state.note.value,'新说明');
  }finally{globalThis.fetch=original;}
 });
