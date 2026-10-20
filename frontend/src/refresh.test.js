@@ -234,3 +234,19 @@ test('data browser retries clear errors and old dataset failures stay isolated',
  mode='ok';await browse();assert.equal(error.value,'');assert.equal(browserRows.value.total,1);
  mode='wait';const pending=browse();dataset.value={id:'new'};rejectOld(Error('旧请求失败'));await pending;assert.equal(error.value,'');assert.equal(browseBusy.value,false);
 });
+
+
+test('analysis results retain submitted question and ignore old datasets',async()=>{
+ const {readFile}=await import('node:fs/promises');const source=await readFile(new URL('./main.js',import.meta.url),'utf8');
+ const method=source.split('\n').find(line=>line.trim().startsWith('async function ask('));
+ for(const action of ['switch-success','switch-failure','question-change']){
+  const state={dataset:{value:{id:'old'}},question:{value:'submitted'},busy:{value:false},error:{value:''},result:{value:null},mode:{value:'sql'},resultQuestion:{value:''},xColumn:{value:0},yColumn:{value:0},history:{value:[]}};let finish,fail;
+  const deps={...state,api:()=>new Promise((resolve,reject)=>{finish=resolve;fail=reject;}),disposeChart(){},numericColumns:()=>[],draw:async()=>{}};
+  const ask=new Function(...Object.keys(deps),method+';return ask;')(...Object.values(deps));
+  const pending=ask();state.question.value='changed';if(action.startsWith('switch'))state.dataset.value={id:'new'};
+  if(action==='switch-failure')fail(Error('old failure'));else finish({rows:[[1]]});await pending;
+  assert.equal(state.busy.value,false);assert.equal(state.error.value,'');
+  if(action.startsWith('switch')){assert.equal(state.result.value,null);assert.equal(state.history.value.length,0);}
+  else{assert.equal(state.resultQuestion.value,'submitted');assert.equal(state.history.value[0].question,'submitted');}
+ }
+});
