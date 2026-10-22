@@ -1,0 +1,15 @@
+# Build context whitelist: never send local databases, secrets, or Git history.
+**
+!Dockerfile
+!requirements.txt
+!backend/
+!backend/*.py
+!data/
+!data/orders.csv
+!frontend/
+!frontend/package.json
+!frontend/pnpm-lock.yaml
+!frontend/index.html
+!frontend/vite.config.js
+!frontend/src/
+!frontend/src/**
